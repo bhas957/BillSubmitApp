@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bill Submission Slip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f4ee;
+    --paper-edge: #eae6d9;
+    --ink: #211f1a;
+    --ink-soft: #6b6558;
+    --line: #cdc6b3;
+    --accent: #3b4fb5;
+    --accent-ink: #2c3b8c;
+    --stamp-green: #1f7a46;
+    --stamp-red: #b3372c;
+    --radius: 2px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(180deg, #e9e6dc 0%, #dedad0 100%);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 32px 16px 64px;
+  }
+
+  .slip {
+    width: 100%;
+    max-width: 420px;
+    background: var(--paper);
+    position: relative;
+    box-shadow: 0 18px 40px -20px rgba(30, 28, 22, 0.45), 0 2px 0 var(--paper-edge);
+    padding: 28px 26px 32px;
+  }
+
+  /* torn perforated bottom edge */
+  .slip::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -10px;
+    height: 20px;
+    background: linear-gradient(-45deg, var(--paper) 8px, transparent 0),
+                linear-gradient(45deg, var(--paper) 8px, transparent 0);
+    background-position: left top;
+    background-repeat: repeat-x;
+    background-size: 16px 20px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 22px;
+  }
+
+  .masthead {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    font-size: 15px;
+    text-transform: uppercase;
+  }
+
+  .subhead {
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 0.08em;
+  }
+
+  .dashed-rule {
+    border: none;
+    border-top: 2px dashed var(--line);
+    margin: 18px 0;
+  }
+
+  .field {
+    margin-bottom: 18px;
+  }
+
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+
+  .field label .opt {
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: 'Inter', sans-serif;
+  }
+
+  input[type="date"],
+  input[type="text"],
+  input[type="number"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    color: var(--ink);
+  }
+
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .amount-wrap {
+    position: relative;
+  }
+  .amount-wrap .rupee {
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+  .amount-wrap input {
+    padding-left: 28px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+  }
+
+  .upload-buttons {
+    display: flex;
+    gap: 10px;
+  }
+
+  .upload-btn {
+    flex: 1;
+    padding: 12px 8px;
+    border: 1.5px dashed var(--line);
+    background: transparent;
+    border-radius: var(--radius);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .upload-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .upload-btn svg { width: 15px; height: 15px; flex: none; }
+
+  #fileInput, #cameraInput { display: none; }
+
+  .file-preview {
+    margin-top: 10px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    font-size: 13px;
+  }
+  .file-preview.show { display: flex; }
+  .file-preview img {
+    width: 38px; height: 38px; object-fit: cover; border-radius: 2px; flex: none;
+  }
+  .file-preview .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-preview .remove {
+    border: none;
+    background: none;
+    color: var(--stamp-red);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .submit-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 14px;
+    border: 2px solid var(--accent-ink);
+    background: var(--accent);
+    color: #fdfcf9;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 13px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: transform 0.05s ease;
+  }
+  .submit-btn:active { transform: translateY(1px); }
+  .submit-btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .status {
+    margin-top: 18px;
+    min-height: 20px;
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+
+  .status.error { color: var(--stamp-red); }
+
+  .stamp {
+    display: none;
+    margin: 14px auto 0;
+    width: fit-content;
+    padding: 8px 18px;
+    border: 3px solid var(--stamp-green);
+    color: var(--stamp-green);
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-size: 13px;
+    border-radius: 4px;
+    transform: rotate(-6deg);
+  }
+  .stamp.show {
+    display: block;
+    animation: stampIn 0.35s ease-out;
+  }
+  @keyframes stampIn {
+    0% { opacity: 0; transform: rotate(-6deg) scale(1.6); }
+    60% { opacity: 1; }
+    100% { opacity: 1; transform: rotate(-6deg) scale(1); }
+  }
+  .stamp a { color: inherit; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stamp.show { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<form class="slip" id="billForm" novalidate>
+  <header>
+    <div class="masthead">Bill Submission Slip</div>
+    <div class="subhead" id="today"></div>
+  </header>
+
+  <hr class="dashed-rule" />
+
+  <div class="field">
+    <label for="date">Date</label>
+    <input type="date" id="date" name="date" required />
+  </div>
+
+  <div class="field">
+    <label for="amount">Amount <span class="opt">(in rupees)</span></label>
+    <div class="amount-wrap">
+      <span class="rupee">₹</span>
+      <input type="number" id="amount" name="amount" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" required />
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="merchant">Merchant <span class="opt">(optional)</span></label>
+    <input type="text" id="merchant" name="merchant" placeholder="e.g. Swiggy, Local canteen" />
+  </div>
+
+  <div class="field">
+    <label>Bill / Receipt</label>
+    <div class="upload-buttons">
+      <button type="button" class="upload-btn" id="chooseFileBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Upload file
+      </button>
+      <button type="button" class="upload-btn" id="takePhotoBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        Take photo
+      </button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" />
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" />
+
+    <div class="file-preview" id="filePreview">
+      <img id="previewImg" alt="" style="display:none" />
+      <span class="name" id="previewName"></span>
+      <button type="button" class="remove" id="removeFileBtn">Remove</button>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-btn" id="submitBtn">Submit bill</button>
+
+  <div class="status" id="statusMsg"></div>
+  <div class="stamp" id="stamp"></div>
+</form>
+
+<script>
+  const dateInput = document.getElementById('date');
+  const amountInput = document.getElementById('amount');
+  const merchantInput = document.getElementById('merchant');
+  const fileInput = document.getElementById('fileInput');
+  const cameraInput = document.getElementById('cameraInput');
+  const chooseFileBtn = document.getElementById('chooseFileBtn');
+  const takePhotoBtn = document.getElementById('takePhotoBtn');
+  const filePreview = document.getElementById('filePreview');
+  const previewImg = document.getElementById('previewImg');
+  const previewName = document.getElementById('previewName');
+  const removeFileBtn = document.getElementById('removeFileBtn');
+  const form = document.getElementById('billForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusMsg = document.getElementById('statusMsg');
+  const stamp = document.getElementById('stamp');
+  const todayLabel = document.getElementById('today');
+
+  let selectedFile = null;
+
+  // --- Date: default to today; allow last month, current month, and next month ---
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function toDateStr(d) {
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  const now = new Date();
+  const todayStr = toDateStr(now);
+  const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+
+  dateInput.value = todayStr;
+  dateInput.min = toDateStr(firstOfLastMonth);
+  dateInput.max = toDateStr(lastOfNextMonth);
+
+  todayLabel.textContent = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+
+  // --- Upload buttons trigger hidden file inputs ---
+  chooseFileBtn.addEventListener('click', () => fileInput.click());
+  takePhotoBtn.addEventListener('click', () => cameraInput.click());
+
+  function handleFile(file) {
+    selectedFile = file;
+    previewName.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    } else {
+      previewImg.style.display = 'none';
+    }
+    filePreview.classList.add('show');
+  }
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  cameraInput.addEventListener('change', () => {
+    if (cameraInput.files[0]) handleFile(cameraInput.files[0]);
+  });
+
+  removeFileBtn.addEventListener('click', () => {
+    selectedFile = null;
+    fileInput.value = '';
+    cameraInput.value = '';
+    filePreview.classList.remove('show');
+    previewImg.style.display = 'none';
+  });
+
+  // --- Submit ---
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    statusMsg.textContent = '';
+    statusMsg.classList.remove('error');
+    stamp.classList.remove('show');
+
+    if (!dateInput.value) {
+      statusMsg.textContent = 'Please pick a date.';
+      statusMsg.classList.add('error');
+      return;
+    }
+    if (!amountInput.value || Number(amountInput.value) <= 0) {
+      statusMsg.textContent = 'Please enter a valid amount.';
+      statusMsg.classList.add('error');
+      return;
+    }
+    if (!selectedFile) {
+      statusMsg.textContent = 'Please attach or photograph the bill.';
+      statusMsg.classList.add('error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('date', dateInput.value);
+    formData.append('amount', amountInput.value);
+    formData.append('merchant', merchantInput.value || '');
+    formData.append('bill', selectedFile);
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    statusMsg.textContent = 'Uploading to Google Drive…';
+
+    try {
+      const res = await fetch('/api/submit', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          throw new Error(`Google account is not connected. Open ${data.authUrl}`);
+        }
+        throw new Error(data.error || 'Submission failed.');
+      }
+
+      statusMsg.textContent = '';
+      stamp.innerHTML = `Submitted ✓<br><a href="${data.proofLink}" target="_blank" rel="noopener" style="font-size:10px;">View proof</a>`;
+      stamp.classList.add('show');
+
+      form.reset();
+      dateInput.value = todayStr;
+      selectedFile = null;
+      filePreview.classList.remove('show');
+      previewImg.style.display = 'none';
+    } catch (err) {
+      statusMsg.classList.add('error');
+      if (err.message && err.message.includes('Google account is not connected')) {
+        statusMsg.innerHTML = 'Google Drive is not connected. <a href="/auth/google" target="_blank" rel="noopener">Connect Google account</a> and try again.';
+      } else {
+        statusMsg.textContent = err.message || 'Something went wrong. Please try again.';
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit bill';
+    }
+  });
+</script>
+
+</body>
+</html>
