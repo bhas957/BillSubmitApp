@@ -18,6 +18,7 @@
     --accent-ink: #2c3b8c;
     --stamp-green: #1f7a46;
     --stamp-red: #b3372c;
+    --fare: #1f7a46;
     --radius: 2px;
   }
 
@@ -107,7 +108,6 @@
     font-family: 'Inter', sans-serif;
   }
 
-  input[type="date"],
   input[type="text"],
   input[type="number"] {
     width: 100%;
@@ -142,19 +142,153 @@
     font-weight: 600;
   }
 
+  /* ---- Calendar (fare-style amounts) ---- */
+  .calendar {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    overflow: hidden;
+  }
+
+  .cal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    background: #faf8f2;
+  }
+
+  .cal-header .month-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .cal-nav {
+    border: 1px solid var(--line);
+    background: transparent;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink);
+  }
+  .cal-nav:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .cal-nav:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .cal-weekdays,
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  .cal-weekdays {
+    padding: 6px 4px 0;
+  }
+
+  .cal-weekdays span {
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    padding: 4px 0;
+  }
+
+  .cal-grid {
+    padding: 4px;
+    gap: 2px;
+  }
+
+  .cal-day {
+    min-height: 48px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius);
+    padding: 4px 2px 3px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1px;
+    color: var(--ink);
+  }
+  .cal-day:hover:not(:disabled) { background: #f0ede3; }
+  .cal-day:disabled {
+    opacity: 0.28;
+    cursor: default;
+  }
+  .cal-day.empty {
+    cursor: default;
+    min-height: 48px;
+  }
+  .cal-day.selected {
+    background: #e7ebf8;
+    outline: 1.5px solid var(--accent);
+  }
+  .cal-day.today .day-num {
+    font-weight: 700;
+    color: var(--accent-ink);
+  }
+  .cal-day.has-bills .day-num {
+    font-weight: 600;
+  }
+
+  .day-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    line-height: 1.1;
+  }
+
+  .day-fare {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8.5px;
+    line-height: 1.1;
+    color: var(--fare);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .date-hint {
+    margin-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    min-height: 16px;
+  }
+  .date-hint.warn {
+    color: #9a4a1a;
+    background: #fff4e8;
+    border: 1px solid #efd2ad;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+  }
+
   .upload-buttons {
     display: flex;
     gap: 10px;
+    flex-wrap: wrap;
   }
 
   .upload-btn {
     flex: 1;
+    min-width: 110px;
     padding: 12px 8px;
     border: 1.5px dashed var(--line);
     background: transparent;
     border-radius: var(--radius);
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 12px;
+    font-size: 11px;
     letter-spacing: 0.04em;
     color: var(--ink);
     cursor: pointer;
@@ -164,9 +298,27 @@
     gap: 6px;
   }
   .upload-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .upload-btn.svg-safe svg { width: 15px; height: 15px; flex: none; }
   .upload-btn svg { width: 15px; height: 15px; flex: none; }
 
-  #fileInput, #cameraInput { display: none; }
+  .upload-btn.zomato {
+    flex: 1 1 100%;
+    border-style: solid;
+    border-color: #e23744;
+    color: #c81e2b;
+    background: #fff8f8;
+  }
+  .upload-btn.zomato:hover {
+    border-color: #c81e2b;
+    color: #a01620;
+    background: #fff0f1;
+  }
+  .upload-btn.zomato:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  #fileInput, #cameraInput, #zomatoInput { display: none; }
 
   .file-preview {
     margin-top: 10px;
@@ -252,6 +404,61 @@
   }
   .stamp a { color: inherit; }
 
+  .drive-status {
+    margin-top: 20px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+  }
+  .drive-status .left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .drive-status .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #b5ae9b;
+    flex: none;
+  }
+  .drive-status.connected .dot { background: var(--stamp-green); }
+  .drive-status.disconnected .dot { background: var(--stamp-red); }
+  .drive-status.checking .dot { background: #c9a227; }
+  .drive-status .label {
+    color: var(--ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .drive-status.connected .label { color: var(--stamp-green); font-weight: 600; }
+  .drive-status.disconnected .label { color: var(--stamp-red); }
+  .drive-status .connect-btn {
+    flex: none;
+    border: 1px solid var(--stamp-red);
+    background: transparent;
+    color: var(--stamp-red);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .drive-status .connect-btn:hover { background: #fff0ef; }
+  .drive-status.connected .connect-btn { display: none; }
+
   @media (prefers-reduced-motion: reduce) {
     .stamp.show { animation: none; }
   }
@@ -268,8 +475,20 @@
   <hr class="dashed-rule" />
 
   <div class="field">
-    <label for="date">Date</label>
-    <input type="date" id="date" name="date" required />
+    <label>Date</label>
+    <input type="hidden" id="date" name="date" required />
+    <div class="calendar" id="calendar">
+      <div class="cal-header">
+        <button type="button" class="cal-nav" id="calPrev" aria-label="Previous month">‹</button>
+        <div class="month-label" id="calMonthLabel"></div>
+        <button type="button" class="cal-nav" id="calNext" aria-label="Next month">›</button>
+      </div>
+      <div class="cal-weekdays">
+        <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+    <div class="date-hint" id="dateHint"></div>
   </div>
 
   <div class="field">
@@ -296,9 +515,14 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>
         Take photo
       </button>
+      <button type="button" class="upload-btn zomato" id="zomatoBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9M10 6H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/></svg>
+        Upload Zomato bill
+      </button>
     </div>
     <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" />
     <input type="file" id="cameraInput" accept="image/*" capture="environment" />
+    <input type="file" id="zomatoInput" accept=".pdf,application/pdf" />
 
     <div class="file-preview" id="filePreview">
       <img id="previewImg" alt="" style="display:none" />
@@ -311,6 +535,14 @@
 
   <div class="status" id="statusMsg"></div>
   <div class="stamp" id="stamp"></div>
+
+  <div class="drive-status checking" id="driveStatus">
+    <div class="left">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="label" id="driveStatusLabel">Checking Google Drive…</span>
+    </div>
+    <a class="connect-btn" id="driveConnectBtn" href="/auth/google">Connect</a>
+  </div>
 </form>
 
 <script>
@@ -319,8 +551,10 @@
   const merchantInput = document.getElementById('merchant');
   const fileInput = document.getElementById('fileInput');
   const cameraInput = document.getElementById('cameraInput');
+  const zomatoInput = document.getElementById('zomatoInput');
   const chooseFileBtn = document.getElementById('chooseFileBtn');
   const takePhotoBtn = document.getElementById('takePhotoBtn');
+  const zomatoBtn = document.getElementById('zomatoBtn');
   const filePreview = document.getElementById('filePreview');
   const previewImg = document.getElementById('previewImg');
   const previewName = document.getElementById('previewName');
@@ -330,28 +564,239 @@
   const statusMsg = document.getElementById('statusMsg');
   const stamp = document.getElementById('stamp');
   const todayLabel = document.getElementById('today');
+  const dateHint = document.getElementById('dateHint');
+  const calGrid = document.getElementById('calGrid');
+  const calMonthLabel = document.getElementById('calMonthLabel');
+  const calPrev = document.getElementById('calPrev');
+  const calNext = document.getElementById('calNext');
+  const driveStatus = document.getElementById('driveStatus');
+  const driveStatusLabel = document.getElementById('driveStatusLabel');
+  const driveConnectBtn = document.getElementById('driveConnectBtn');
 
   let selectedFile = null;
+  let billsByDate = {};
+  let driveConnected = false;
+  let viewYear;
+  let viewMonth; // 0-indexed
 
-  // --- Date: default to today; allow last month, current month, and next month ---
   function pad(n) { return String(n).padStart(2, '0'); }
   function toDateStr(d) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
+
   const now = new Date();
   const todayStr = toDateStr(now);
-  const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  const minDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  const minDateStr = toDateStr(minDate);
+  const maxDateStr = toDateStr(maxDate);
 
+  viewYear = now.getFullYear();
+  viewMonth = now.getMonth();
   dateInput.value = todayStr;
-  dateInput.min = toDateStr(firstOfLastMonth);
-  dateInput.max = toDateStr(lastOfNextMonth);
 
-  todayLabel.textContent = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+  todayLabel.textContent = now.toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  }).toUpperCase();
+
+  function formatFare(amount) {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return '';
+    if (n >= 1000) {
+      return `₹${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
+    }
+    if (Number.isInteger(n) || n % 1 === 0) return `₹${Math.round(n)}`;
+    return `₹${n.toFixed(0)}`;
+  }
+
+  function formatRupees(amount) {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('en-IN', {
+      minimumFractionDigits: n % 1 ? 2 : 0,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function canNavigate(year, month) {
+    const first = `${year}-${pad(month + 1)}-01`;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const last = `${year}-${pad(month + 1)}-${pad(lastDay)}`;
+    return last >= minDateStr && first <= maxDateStr;
+  }
+
+  function updateDateHint() {
+    const selected = dateInput.value;
+    const summary = billsByDate[selected];
+    if (summary && summary.count > 0) {
+      const billWord = summary.count === 1 ? 'bill' : 'bills';
+      dateHint.className = 'date-hint warn';
+      dateHint.textContent =
+        `Already submitted ${summary.count} ${billWord} for this date — total ₹${formatRupees(summary.total)}. You can still add another.`;
+    } else {
+      dateHint.className = 'date-hint';
+      dateHint.textContent = selected
+        ? `Selected: ${new Date(selected + 'T12:00:00').toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric'
+          })}`
+        : '';
+    }
+  }
+
+  function renderCalendar() {
+    calMonthLabel.textContent = new Date(viewYear, viewMonth, 1)
+      .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+      .toUpperCase();
+
+    const prevMonth = viewMonth === 0 ? 11 : viewMonth - 1;
+    const prevYear = viewMonth === 0 ? viewYear - 1 : viewYear;
+    const nextMonth = viewMonth === 11 ? 0 : viewMonth + 1;
+    const nextYear = viewMonth === 11 ? viewYear + 1 : viewYear;
+    calPrev.disabled = !canNavigate(prevYear, prevMonth);
+    calNext.disabled = !canNavigate(nextYear, nextMonth);
+
+    const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    calGrid.innerHTML = '';
+
+    for (let i = 0; i < firstDow; i += 1) {
+      const empty = document.createElement('div');
+      empty.className = 'cal-day empty';
+      calGrid.appendChild(empty);
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const dateStr = `${viewYear}-${pad(viewMonth + 1)}-${pad(day)}`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cal-day';
+      btn.dataset.date = dateStr;
+
+      const outOfRange = dateStr < minDateStr || dateStr > maxDateStr;
+      btn.disabled = outOfRange;
+
+      if (dateStr === todayStr) btn.classList.add('today');
+      if (dateStr === dateInput.value) btn.classList.add('selected');
+
+      const summary = billsByDate[dateStr];
+      if (summary && summary.count > 0) btn.classList.add('has-bills');
+
+      const num = document.createElement('span');
+      num.className = 'day-num';
+      num.textContent = String(day);
+      btn.appendChild(num);
+
+      if (summary && summary.count > 0) {
+        const fare = document.createElement('span');
+        fare.className = 'day-fare';
+        fare.textContent = formatFare(summary.total);
+        fare.title = `₹${formatRupees(summary.total)} (${summary.count} bill${summary.count > 1 ? 's' : ''})`;
+        btn.appendChild(fare);
+      }
+
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        dateInput.value = dateStr;
+        renderCalendar();
+        updateDateHint();
+      });
+
+      calGrid.appendChild(btn);
+    }
+
+    updateDateHint();
+  }
+
+  calPrev.addEventListener('click', () => {
+    if (viewMonth === 0) { viewMonth = 11; viewYear -= 1; }
+    else viewMonth -= 1;
+    renderCalendar();
+  });
+
+  calNext.addEventListener('click', () => {
+    if (viewMonth === 11) { viewMonth = 0; viewYear += 1; }
+    else viewMonth += 1;
+    renderCalendar();
+  });
+
+  function setDriveStatus(state, label) {
+    driveStatus.className = `drive-status ${state}`;
+    driveStatusLabel.textContent = label;
+    driveConnected = state === 'connected';
+  }
+
+  function markAuthRequired(message) {
+    setDriveStatus(
+      'disconnected',
+      message || 'Google auth connection required — reconnect Drive'
+    );
+  }
+
+  async function refreshAuthStatus() {
+    setDriveStatus('checking', 'Checking Google Drive…');
+    try {
+      const res = await fetch('/api/auth-status', { cache: 'no-store' });
+      const data = await res.json();
+      driveConnectBtn.href = data.authUrl || '/auth/google';
+
+      if (data.connected) {
+        const who = data.email ? ` · ${data.email}` : '';
+        setDriveStatus('connected', `Drive connected ✓${who}`);
+        return true;
+      }
+
+      markAuthRequired(
+        data.message ||
+          (data.reason === 'expired'
+            ? 'Google auth expired — reconnect required'
+            : 'Google auth connection required')
+      );
+      return false;
+    } catch (err) {
+      markAuthRequired('Could not check Google Drive connection');
+      return false;
+    }
+  }
+
+  async function loadBills() {
+    try {
+      const res = await fetch('/api/bills', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          markAuthRequired('Google auth connection required — reconnect to load bills');
+          billsByDate = {};
+          renderCalendar();
+          return;
+        }
+        throw new Error(data.error || 'Could not load bills');
+      }
+      if (!driveConnected) {
+        setDriveStatus('connected', 'Drive connected ✓');
+      }
+      billsByDate = data.byDate || {};
+      renderCalendar();
+    } catch (err) {
+      console.warn('Could not load existing bills:', err.message);
+      dateHint.className = 'date-hint warn';
+      dateHint.textContent = 'Could not load saved bill amounts for the calendar.';
+      renderCalendar();
+    }
+  }
+
+  function applyByDate(byDate) {
+    if (byDate && typeof byDate === 'object') {
+      billsByDate = byDate;
+      renderCalendar();
+    } else {
+      loadBills();
+    }
+  }
 
   // --- Upload buttons trigger hidden file inputs ---
   chooseFileBtn.addEventListener('click', () => fileInput.click());
   takePhotoBtn.addEventListener('click', () => cameraInput.click());
+  zomatoBtn.addEventListener('click', () => zomatoInput.click());
 
   function handleFile(file) {
     selectedFile = file;
@@ -384,7 +829,75 @@
     previewImg.style.display = 'none';
   });
 
-  // --- Submit ---
+  // --- Zomato: pick PDF → parse + save immediately ---
+  zomatoInput.addEventListener('change', async () => {
+    const file = zomatoInput.files[0];
+    zomatoInput.value = '';
+    if (!file) return;
+
+    statusMsg.textContent = '';
+    statusMsg.classList.remove('error');
+    stamp.classList.remove('show');
+
+    zomatoBtn.disabled = true;
+    zomatoBtn.textContent = 'Parsing Zomato bill…';
+    statusMsg.textContent = 'Reading Zomato receipt and saving…';
+
+    const formData = new FormData();
+    formData.append('bill', file);
+
+    try {
+      const res = await fetch('/api/submit-zomato', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          markAuthRequired('Google auth connection required');
+          throw new Error('Google account is not connected.');
+        }
+        throw new Error(data.error || 'Zomato upload failed.');
+      }
+
+      setDriveStatus('connected', 'Drive connected ✓');
+      applyByDate(data.byDate);
+
+      if (data.parsed && data.parsed.date) {
+        dateInput.value = data.parsed.date;
+        const [y, m] = data.parsed.date.split('-').map(Number);
+        viewYear = y;
+        viewMonth = m - 1;
+        renderCalendar();
+      }
+
+      const parsed = data.parsed || {};
+      const dayNote = data.daySummary && data.daySummary.count > 1
+        ? `<br><span style="font-size:10px;font-weight:500;">Day total now ₹${formatRupees(data.daySummary.total)}</span>`
+        : '';
+
+      statusMsg.textContent = '';
+      stamp.innerHTML =
+        `Zomato saved ✓<br>` +
+        `<span style="font-size:10px;font-weight:500;">` +
+        `${parsed.date || ''} · ₹${formatRupees(parsed.amount)} · ${parsed.merchant || 'Zomato'}` +
+        `</span>` +
+        dayNote +
+        `<br><a href="${data.proofLink}" target="_blank" rel="noopener" style="font-size:10px;">View proof</a>`;
+      stamp.classList.add('show');
+    } catch (err) {
+      statusMsg.classList.add('error');
+      if (err.message && err.message.includes('Google account is not connected')) {
+        statusMsg.innerHTML = 'Google Drive is not connected. <a href="/auth/google" target="_blank" rel="noopener">Connect Google account</a> and try again.';
+      } else {
+        statusMsg.textContent = err.message || 'Could not save Zomato bill.';
+      }
+    } finally {
+      zomatoBtn.disabled = false;
+      zomatoBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9M10 6H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/></svg> Upload Zomato bill';
+    }
+  });
+
+  // --- Submit manual bill ---
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     statusMsg.textContent = '';
@@ -423,20 +936,27 @@
 
       if (!res.ok) {
         if (res.status === 401 && data.authUrl) {
-          throw new Error(`Google account is not connected. Open ${data.authUrl}`);
+          markAuthRequired('Google auth connection required');
+          throw new Error('Google account is not connected.');
         }
         throw new Error(data.error || 'Submission failed.');
       }
+
+      setDriveStatus('connected', 'Drive connected ✓');
+      applyByDate(data.byDate);
 
       statusMsg.textContent = '';
       stamp.innerHTML = `Submitted ✓<br><a href="${data.proofLink}" target="_blank" rel="noopener" style="font-size:10px;">View proof</a>`;
       stamp.classList.add('show');
 
-      form.reset();
-      dateInput.value = todayStr;
+      amountInput.value = '';
+      merchantInput.value = '';
       selectedFile = null;
+      fileInput.value = '';
+      cameraInput.value = '';
       filePreview.classList.remove('show');
       previewImg.style.display = 'none';
+      updateDateHint();
     } catch (err) {
       statusMsg.classList.add('error');
       if (err.message && err.message.includes('Google account is not connected')) {
@@ -447,6 +967,34 @@
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = 'Submit bill';
+    }
+  });
+
+  renderCalendar();
+
+  (async function init() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('drive') === 'connected') {
+      statusMsg.textContent = '';
+      stamp.innerHTML = 'Drive connected ✓';
+      stamp.classList.add('show');
+      window.history.replaceState({}, '', '/');
+    }
+
+    const ok = await refreshAuthStatus();
+    if (ok) await loadBills();
+    else {
+      billsByDate = {};
+      renderCalendar();
+    }
+  })();
+
+  // If user reconnects in another tab, refresh status when they come back.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      refreshAuthStatus().then((ok) => {
+        if (ok) loadBills();
+      });
     }
   });
 </script>
