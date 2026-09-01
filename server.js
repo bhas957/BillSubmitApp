@@ -15,7 +15,14 @@ const OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
 const OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
 const OAUTH_REDIRECT_URI = process.env.GOOGLE_OAUTH_REDIRECT_URI || `http://localhost:${PORT}/auth/google/callback`;
 const TOKEN_FILE = process.env.GOOGLE_OAUTH_TOKEN_FILE || './oauth-token.json';
-const OAUTH_SCOPES = ['https://www.googleapis.com/auth/drive'];
+const OAUTH_SCOPES = [
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/gmail.readonly',
+];
+const ZOMATO_GMAIL_QUERY = process.env.ZOMATO_GMAIL_QUERY
+  || '(from:zomato.com OR subject:zomato) has:attachment filename:pdf';
+const SYNCED_STORE_FILE = process.env.ZOMATO_GMAIL_SYNCED_FILE || './zomato-gmail-synced.json';
+const DAILY_REIMBURSEMENT_CAP = Number(process.env.DAILY_REIMBURSEMENT_CAP || 300);
 
 if (!DRIVE_FOLDER_ID) {
   console.error('Missing DRIVE_FOLDER_ID in .env — see .env.example');
@@ -34,6 +41,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
 // Keep uploads in memory; bills are small images/PDFs, not huge files.
 const upload = multer({
@@ -100,8 +108,23 @@ function isGoogleAuthError(err) {
     return true;
   }
   if (err.code === 401 || err.status === 401) return true;
-  const msg = String(err.message || '');
-  return /invalid_grant|Token has been expired|invalid credentials|Login Required|unauthorized/i.test(msg);
+  const reason = err.response?.data?.error?.errors?.[0]?.reason;
+  if (reason === 'insufficientPermissions') return true;
+  const msg = String(err.message || err.response?.data?.error?.message || '');
+  return /invalid_grant|Token has been expired|invalid credentials|Login Required|unauthorized|insufficient.*(scope|permission)/i.test(msg);
+}
+
+function gmailApiDisabledMessage(err) {
+  const reason = err?.response?.data?.error?.errors?.[0]?.reason;
+  const msg = String(err?.response?.data?.error?.message || err?.message || '');
+  if (reason !== 'accessNotConfigured' && !/has not been used in project|it is disabled/i.test(msg)) {
+    return null;
+  }
+  const activationUrl = err?.response?.data?.error?.details
+    ?.find((d) => d.metadata?.activationUrl)?.metadata?.activationUrl;
+  return activationUrl
+    ? `Gmail API is not enabled for this Google Cloud project. Enable it at ${activationUrl}, wait a minute, then retry.`
+    : 'Gmail API is not enabled for this Google Cloud project. Enable it in Google Cloud Console (APIs & Services → Library → Gmail API), wait a minute, then retry.';
 }
 
 function authRequiredError() {
@@ -116,6 +139,13 @@ function getDriveClientOrThrow() {
   if (!tokens) throw authRequiredError();
   oauth2Client.setCredentials(tokens);
   return google.drive({ version: 'v3', auth: oauth2Client });
+}
+
+function getGmailClientOrThrow() {
+  const tokens = loadSavedTokens();
+  if (!tokens) throw authRequiredError();
+  oauth2Client.setCredentials(tokens);
+  return google.gmail({ version: 'v1', auth: oauth2Client });
 }
 
 async function probeDriveConnection() {
@@ -416,6 +446,177 @@ async function appendRowToCsv(drive, rowValues) {
   });
 }
 
+// ---- Zomato Gmail auto-sync -------------------------------------------
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function gmailDateStr(d) {
+  return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+}
+
+function buildGmailQueryDateRange(dateStr, mode) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  let start;
+  let end;
+  if (mode === 'month') {
+    start = new Date(y, m - 1, 1);
+    end = new Date(y, m, 1);
+  } else {
+    start = new Date(y, m - 1, d);
+    end = new Date(y, m - 1, d + 1);
+  }
+  return { after: gmailDateStr(start), before: gmailDateStr(end) };
+}
+
+function findPdfAttachmentParts(payload, results = []) {
+  if (!payload) return results;
+  const filename = payload.filename || '';
+  if (filename.toLowerCase().endsWith('.pdf') && payload.body?.attachmentId) {
+    results.push({ filename, attachmentId: payload.body.attachmentId });
+  }
+  if (Array.isArray(payload.parts)) {
+    for (const part of payload.parts) findPdfAttachmentParts(part, results);
+  }
+  return results;
+}
+
+function syncedStorePath() {
+  return path.resolve(__dirname, SYNCED_STORE_FILE);
+}
+
+function loadSyncedMessageIds() {
+  try {
+    if (!fs.existsSync(syncedStorePath())) return new Set();
+    const data = JSON.parse(fs.readFileSync(syncedStorePath(), 'utf8'));
+    return new Set(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error('Could not read Zomato Gmail sync store:', err.message);
+    return new Set();
+  }
+}
+
+function saveSyncedMessageIds(set) {
+  fs.writeFileSync(syncedStorePath(), JSON.stringify([...set], null, 2), 'utf8');
+}
+
+async function listGmailMessageIds(gmail, query) {
+  const ids = [];
+  let pageToken;
+  do {
+    const listRes = await gmail.users.messages.list({
+      userId: 'me',
+      q: query,
+      maxResults: 100,
+      pageToken,
+    });
+    (listRes.data.messages || []).forEach((m) => ids.push(m.id));
+    pageToken = listRes.data.nextPageToken;
+  } while (pageToken && ids.length < 300);
+  return ids;
+}
+
+// Scans Gmail for Zomato order emails in the given date/month, parses any PDF
+// receipts found, and saves new ones the same way the manual Zomato upload
+// does (Drive file + CSV row). Already-processed messages are skipped using
+// a small local store so re-running the sync is safe.
+async function syncZomatoFromGmail({ dateStr, mode }) {
+  const tokens = loadSavedTokens();
+  if (!tokens) throw authRequiredError();
+  oauth2Client.setCredentials(tokens);
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
+  const { after, before } = buildGmailQueryDateRange(dateStr, mode);
+  const query = `${ZOMATO_GMAIL_QUERY} after:${after} before:${before}`;
+
+  const messageIds = await listGmailMessageIds(gmail, query);
+  const syncedIds = loadSyncedMessageIds();
+  const summary = {
+    found: messageIds.length,
+    synced: 0,
+    alreadySynced: 0,
+    skipped: 0,
+    capSkipped: 0,
+    errors: 0,
+  };
+
+  // Seed each date's running total from what's already saved, so the cap
+  // accounts for both prior manual submissions and prior syncs.
+  const { byDate: existingByDate } = await readAllBills(drive);
+  const dailyTotals = {};
+  for (const [date, info] of Object.entries(existingByDate)) {
+    dailyTotals[date] = info.total;
+  }
+
+  for (const messageId of messageIds) {
+    if (syncedIds.has(messageId)) {
+      summary.alreadySynced += 1;
+      continue;
+    }
+
+    try {
+      const msgRes = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
+      const pdfParts = findPdfAttachmentParts(msgRes.data.payload);
+
+      let processedAny = false;
+      let cappedAny = false;
+      for (const part of pdfParts) {
+        const attachRes = await gmail.users.messages.attachments.get({
+          userId: 'me',
+          messageId,
+          id: part.attachmentId,
+        });
+        const buffer = Buffer.from(attachRes.data.data, 'base64');
+
+        let parsed;
+        try {
+          parsed = await parseZomatoReceipt(buffer);
+        } catch (err) {
+          continue; // Not a parseable Zomato receipt — try the next attachment, if any.
+        }
+
+        const dateTotalSoFar = dailyTotals[parsed.date] || 0;
+        if (dateTotalSoFar >= DAILY_REIMBURSEMENT_CAP) {
+          cappedAny = true;
+          continue; // Daily allowance already used up for this date — skip this order.
+        }
+
+        const file = {
+          originalname: part.filename || `${parsed.date}.pdf`,
+          mimetype: 'application/pdf',
+          buffer,
+        };
+        const uploaded = await uploadBillFile(drive, file, parsed.date, parsed.amount);
+        const proofLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
+        await appendRowToCsv(drive, [
+          parsed.date,
+          Number(parsed.amount).toFixed(2),
+          parsed.merchant,
+          proofLink,
+        ]);
+        dailyTotals[parsed.date] = dateTotalSoFar + parsed.amount;
+        summary.synced += 1;
+        processedAny = true;
+      }
+
+      if (!processedAny) {
+        if (cappedAny) summary.capSkipped += 1;
+        else summary.skipped += 1;
+      }
+      syncedIds.add(messageId);
+    } catch (err) {
+      if (isGoogleAuthError(err)) throw err;
+      console.error(`Zomato Gmail sync error for message ${messageId}:`, err.message);
+      summary.errors += 1;
+    }
+  }
+
+  saveSyncedMessageIds(syncedIds);
+  return summary;
+}
+
 // ---- Routes -----------------------------------------------------------
 
 app.get('/api/bills', async (_req, res) => {
@@ -507,6 +708,35 @@ app.post('/api/submit-zomato', upload.single('bill'), async (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     res.status(500).json({ error: 'Could not parse or save the Zomato receipt. Please try again.' });
+  }
+});
+
+app.post('/api/sync-zomato-gmail', async (req, res) => {
+  try {
+    const { date, mode } = req.body || {};
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'A valid date is required.' });
+    }
+    const syncMode = mode === 'month' ? 'month' : 'day';
+
+    const summary = await syncZomatoFromGmail({ dateStr: date, mode: syncMode });
+    const drive = getDriveClientOrThrow();
+    const { byDate } = await readAllBills(drive);
+
+    let message = summary.synced > 0
+      ? `Synced ${summary.synced} new Zomato order${summary.synced === 1 ? '' : 's'} from Gmail.`
+      : 'No new Zomato orders found to sync.';
+    if (summary.capSkipped > 0) {
+      message += ` Skipped ${summary.capSkipped} order${summary.capSkipped === 1 ? '' : 's'} — daily ₹${DAILY_REIMBURSEMENT_CAP} allowance already reached for that date.`;
+    }
+
+    res.json({ success: true, mode: syncMode, summary, byDate, message });
+  } catch (err) {
+    console.error('Zomato Gmail sync error:', err);
+    if (isGoogleAuthError(err)) return sendAuthRequired(res);
+    const disabledMessage = gmailApiDisabledMessage(err);
+    if (disabledMessage) return res.status(400).json({ error: disabledMessage });
+    res.status(500).json({ error: 'Could not sync Zomato orders from Gmail. Please try again.' });
   }
 });
 

@@ -18,6 +18,7 @@ bill-submit/
 
 1. Go to https://console.cloud.google.com/ and create a project (or reuse one).
 2. **APIs & Services → Library** → search "Google Drive API" → **Enable**.
+   Also search "Gmail API" → **Enable** (needed for Zomato order auto-sync).
 3. **APIs & Services → Credentials** → **Create Credentials → OAuth client ID**.
    - If prompted, configure the consent screen first (External, testing is fine).
    - Application type: **Web application**
@@ -81,7 +82,9 @@ HTTPS, e.g.:
 - **Frontend** (`public/index.html`): plain HTML/CSS/JS, no build step.
   Date input defaults to today and is capped to the current month. Two
   upload buttons — "Upload file" (gallery/file picker, accepts images or
-  PDF) and "Take photo" (opens the camera directly on phones).
+  PDF) and "Take photo" (opens the camera directly on phones). Below the
+  calendar, two more buttons let you auto-sync Zomato orders straight from
+  Gmail for the selected date, or for that date's whole month.
 - **Backend** (`server.js`):
   - `POST /api/submit` receives the form (`multipart/form-data`) with fields
     `date`, `amount`, `merchant`, and file field `bill`.
@@ -91,6 +94,17 @@ HTTPS, e.g.:
     the updated content (Drive doesn't support true byte-append, so this is
     a safe read‑modify‑write — fine for one person submitting bills).
   - Responds with the Drive link to the uploaded proof file.
+  - `POST /api/sync-zomato-gmail` (`{ date, mode: 'day' | 'month' }`) searches
+    the connected Gmail account for Zomato order emails with a PDF receipt in
+    that date's day or month, parses each one with the same Zomato parser,
+    and saves any new ones to Drive + the CSV exactly like a manual Zomato
+    upload. Already-processed emails are tracked in a local
+    `zomato-gmail-synced.json` file so re-running a sync never double-saves.
+    Adjust which emails match via the `ZOMATO_GMAIL_QUERY` env var (default:
+    `(from:zomato.com OR subject:zomato) has:attachment filename:pdf`).
+    Respects a per-day reimbursement cap: once a date's already-saved bills
+    (manual + synced) total `DAILY_REIMBURSEMENT_CAP` (default `300`), any
+    further Zomato orders found for that same date are skipped.
 
 ## Notes & limits
 

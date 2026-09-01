@@ -274,6 +274,41 @@
     border-radius: var(--radius);
   }
 
+  .zomato-sync-buttons {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .sync-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 9px 8px;
+    border: 1.5px solid #e23744;
+    background: #fff8f8;
+    color: #c81e2b;
+    border-radius: var(--radius);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .sync-btn:hover:not(:disabled) { background: #fff0f1; border-color: #c81e2b; color: #a01620; }
+  .sync-btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .sync-status {
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    min-height: 14px;
+  }
+  .sync-status.error { color: var(--stamp-red); }
+  .sync-status.ok { color: var(--stamp-green); }
+
   .upload-buttons {
     display: flex;
     gap: 10px;
@@ -489,6 +524,11 @@
       <div class="cal-grid" id="calGrid"></div>
     </div>
     <div class="date-hint" id="dateHint"></div>
+    <div class="zomato-sync-buttons">
+      <button type="button" class="sync-btn" id="syncDateBtn">Auto-sync Zomato orders — this date (via Gmail)</button>
+      <button type="button" class="sync-btn" id="syncMonthBtn">Auto-sync Zomato orders — this month (via Gmail)</button>
+    </div>
+    <div class="sync-status" id="syncStatus"></div>
   </div>
 
   <div class="field">
@@ -539,7 +579,7 @@
   <div class="drive-status checking" id="driveStatus">
     <div class="left">
       <span class="dot" aria-hidden="true"></span>
-      <span class="label" id="driveStatusLabel">Checking Google Drive…</span>
+      <span class="label" id="driveStatusLabel">Checking Google connection…</span>
     </div>
     <a class="connect-btn" id="driveConnectBtn" href="/auth/google">Connect</a>
   </div>
@@ -572,6 +612,9 @@
   const driveStatus = document.getElementById('driveStatus');
   const driveStatusLabel = document.getElementById('driveStatusLabel');
   const driveConnectBtn = document.getElementById('driveConnectBtn');
+  const syncDateBtn = document.getElementById('syncDateBtn');
+  const syncMonthBtn = document.getElementById('syncMonthBtn');
+  const syncStatus = document.getElementById('syncStatus');
 
   let selectedFile = null;
   let billsByDate = {};
@@ -733,7 +776,7 @@
   }
 
   async function refreshAuthStatus() {
-    setDriveStatus('checking', 'Checking Google Drive…');
+    setDriveStatus('checking', 'Checking Google connection…');
     try {
       const res = await fetch('/api/auth-status', { cache: 'no-store' });
       const data = await res.json();
@@ -741,7 +784,7 @@
 
       if (data.connected) {
         const who = data.email ? ` · ${data.email}` : '';
-        setDriveStatus('connected', `Drive connected ✓${who}`);
+        setDriveStatus('connected', `Google connected ✓ (Drive + Gmail)${who}`);
         return true;
       }
 
@@ -772,7 +815,7 @@
         throw new Error(data.error || 'Could not load bills');
       }
       if (!driveConnected) {
-        setDriveStatus('connected', 'Drive connected ✓');
+        setDriveStatus('connected', 'Google connected ✓');
       }
       billsByDate = data.byDate || {};
       renderCalendar();
@@ -858,7 +901,7 @@
         throw new Error(data.error || 'Zomato upload failed.');
       }
 
-      setDriveStatus('connected', 'Drive connected ✓');
+      setDriveStatus('connected', 'Google connected ✓');
       applyByDate(data.byDate);
 
       if (data.parsed && data.parsed.date) {
@@ -896,6 +939,70 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9M10 6H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/></svg> Upload Zomato bill';
     }
   });
+
+  // --- Zomato: auto-sync orders from Gmail (per date or per month) ---
+  const syncBtnLabels = {
+    date: 'Auto-sync Zomato orders — this date (via Gmail)',
+    month: 'Auto-sync Zomato orders — this month (via Gmail)',
+  };
+
+  async function runZomatoGmailSync(mode) {
+    if (!dateInput.value) {
+      syncStatus.className = 'sync-status error';
+      syncStatus.textContent = 'Please pick a date first.';
+      return;
+    }
+
+    const btn = mode === 'month' ? syncMonthBtn : syncDateBtn;
+    const otherBtn = mode === 'month' ? syncDateBtn : syncMonthBtn;
+
+    syncDateBtn.disabled = true;
+    syncMonthBtn.disabled = true;
+    btn.textContent = mode === 'month' ? 'Syncing this month…' : 'Syncing this date…';
+    syncStatus.className = 'sync-status';
+    syncStatus.textContent = 'Checking Gmail for Zomato orders…';
+
+    try {
+      const res = await fetch('/api/sync-zomato-gmail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: dateInput.value, mode }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          markAuthRequired('Reconnect Google to allow Gmail access for Zomato sync');
+          throw new Error('Google account is not connected.');
+        }
+        throw new Error(data.error || 'Zomato Gmail sync failed.');
+      }
+
+      applyByDate(data.byDate);
+
+      const s = data.summary || {};
+      syncStatus.className = 'sync-status ok';
+      syncStatus.textContent =
+        `${data.message} (found ${s.found || 0}, already synced ${s.alreadySynced || 0}` +
+        (s.capSkipped ? `, cap-skipped ${s.capSkipped}` : '') +
+        (s.errors ? `, errors ${s.errors}` : '') + ')';
+    } catch (err) {
+      syncStatus.className = 'sync-status error';
+      if (err.message && err.message.includes('Google account is not connected')) {
+        syncStatus.innerHTML = 'Google account not connected for Gmail access. <a href="/auth/google" target="_blank" rel="noopener">Connect Google account</a> and try again.';
+      } else {
+        syncStatus.textContent = err.message || 'Could not sync Zomato orders from Gmail.';
+      }
+    } finally {
+      syncDateBtn.disabled = false;
+      syncMonthBtn.disabled = false;
+      btn.textContent = syncBtnLabels[mode === 'month' ? 'month' : 'date'];
+      otherBtn.textContent = syncBtnLabels[mode === 'month' ? 'date' : 'month'];
+    }
+  }
+
+  syncDateBtn.addEventListener('click', () => runZomatoGmailSync('date'));
+  syncMonthBtn.addEventListener('click', () => runZomatoGmailSync('month'));
 
   // --- Submit manual bill ---
   form.addEventListener('submit', async (e) => {
@@ -942,7 +1049,7 @@
         throw new Error(data.error || 'Submission failed.');
       }
 
-      setDriveStatus('connected', 'Drive connected ✓');
+      setDriveStatus('connected', 'Google connected ✓');
       applyByDate(data.byDate);
 
       statusMsg.textContent = '';
@@ -976,7 +1083,7 @@
     const params = new URLSearchParams(window.location.search);
     if (params.get('drive') === 'connected') {
       statusMsg.textContent = '';
-      stamp.innerHTML = 'Drive connected ✓';
+      stamp.innerHTML = 'Google connected ✓';
       stamp.classList.add('show');
       window.history.replaceState({}, '', '/');
     }
