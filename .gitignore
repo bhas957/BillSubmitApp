@@ -8,6 +8,7 @@ node_modules/
 service-account-key.json
 oauth-token.json
 zomato-gmail-synced.json
+zomato-completed-days.json
 *credentials*.json
 *secret*.json
 

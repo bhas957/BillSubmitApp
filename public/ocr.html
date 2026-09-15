@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OCR Image Upload</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f4ee;
+    --paper-edge: #eae6d9;
+    --ink: #211f1a;
+    --ink-soft: #6b6558;
+    --line: #cdc6b3;
+    --accent: #3b4fb5;
+    --accent-ink: #2c3b8c;
+    --stamp-green: #1f7a46;
+    --stamp-red: #b3372c;
+    --radius: 2px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(180deg, #e9e6dc 0%, #dedad0 100%);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 32px 16px 64px;
+  }
+
+  .slip {
+    width: 100%;
+    max-width: 420px;
+    background: var(--paper);
+    position: relative;
+    box-shadow: 0 18px 40px -20px rgba(30, 28, 22, 0.45), 0 2px 0 var(--paper-edge);
+    padding: 28px 26px 32px;
+  }
+
+  .slip::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -10px;
+    height: 20px;
+    background: linear-gradient(-45deg, var(--paper) 8px, transparent 0),
+                linear-gradient(45deg, var(--paper) 8px, transparent 0);
+    background-position: left top;
+    background-repeat: repeat-x;
+    background-size: 16px 20px;
+  }
+
+  header { text-align: center; margin-bottom: 22px; }
+
+  .back-link {
+    display: inline-block;
+    margin-bottom: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+  .back-link:hover { color: var(--accent-ink); }
+
+  .masthead {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    font-size: 15px;
+    text-transform: uppercase;
+  }
+
+  .subhead {
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 0.08em;
+  }
+
+  .dashed-rule {
+    border: none;
+    border-top: 2px dashed var(--line);
+    margin: 18px 0;
+  }
+
+  .field { margin-bottom: 18px; }
+
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+
+  .upload-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .upload-btn {
+    flex: 1;
+    min-width: 110px;
+    padding: 12px 8px;
+    border: 1.5px dashed var(--line);
+    background: transparent;
+    border-radius: var(--radius);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .upload-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .upload-btn svg { width: 15px; height: 15px; flex: none; }
+
+  #fileInput, #cameraInput { display: none; }
+
+  .file-preview {
+    margin-top: 10px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    font-size: 13px;
+  }
+  .file-preview.show { display: flex; }
+  .file-preview img {
+    width: 38px; height: 38px; object-fit: cover; border-radius: 2px; flex: none;
+  }
+  .file-preview .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-preview .remove {
+    border: none;
+    background: none;
+    color: var(--stamp-red);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .submit-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 14px;
+    border: 2px solid var(--accent-ink);
+    background: var(--accent);
+    color: #fdfcf9;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 13px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: transform 0.05s ease;
+  }
+  .submit-btn:active { transform: translateY(1px); }
+  .submit-btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .status {
+    margin-top: 18px;
+    min-height: 20px;
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+  .status.error { color: var(--stamp-red); }
+
+  .stamp {
+    display: none;
+    margin: 14px auto 0;
+    width: fit-content;
+    padding: 8px 18px;
+    border: 3px solid var(--stamp-green);
+    color: var(--stamp-green);
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-size: 13px;
+    border-radius: 4px;
+    transform: rotate(-6deg);
+  }
+  .stamp.show { display: block; animation: stampIn 0.35s ease-out; }
+  @keyframes stampIn {
+    0% { opacity: 0; transform: rotate(-6deg) scale(1.6); }
+    60% { opacity: 1; }
+    100% { opacity: 1; transform: rotate(-6deg) scale(1); }
+  }
+  .stamp a { color: inherit; }
+
+  .drive-status {
+    margin-top: 20px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+  }
+  .drive-status .left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .drive-status .dot { width: 9px; height: 9px; border-radius: 50%; background: #b5ae9b; flex: none; }
+  .drive-status.connected .dot { background: var(--stamp-green); }
+  .drive-status.disconnected .dot { background: var(--stamp-red); }
+  .drive-status.checking .dot { background: #c9a227; }
+  .drive-status .label {
+    color: var(--ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .drive-status.connected .label { color: var(--stamp-green); font-weight: 600; }
+  .drive-status.disconnected .label { color: var(--stamp-red); }
+  .drive-status .connect-btn {
+    flex: none;
+    border: 1px solid var(--stamp-red);
+    background: transparent;
+    color: var(--stamp-red);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .drive-status .connect-btn:hover { background: #fff0ef; }
+  .drive-status.connected .connect-btn { display: none; }
+
+  @media (prefers-reduced-motion: reduce) { .stamp.show { animation: none; } }
+</style>
+</head>
+<body>
+
+<form class="slip" id="ocrForm" novalidate>
+  <a class="back-link" href="/">&larr; Back</a>
+  <header>
+    <div class="masthead">OCR Image Upload</div>
+    <div class="subhead">Save a receipt photo to Google Drive</div>
+  </header>
+
+  <hr class="dashed-rule" />
+
+  <div class="field">
+    <label>Image</label>
+    <div class="upload-buttons">
+      <button type="button" class="upload-btn" id="chooseFileBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Upload file
+      </button>
+      <button type="button" class="upload-btn" id="takePhotoBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        Take photo
+      </button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" />
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" />
+
+    <div class="file-preview" id="filePreview">
+      <img id="previewImg" alt="" style="display:none" />
+      <span class="name" id="previewName"></span>
+      <button type="button" class="remove" id="removeFileBtn">Remove</button>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-btn" id="submitBtn">Save to Drive</button>
+
+  <div class="status" id="statusMsg"></div>
+  <div class="stamp" id="stamp"></div>
+
+  <div class="drive-status checking" id="driveStatus">
+    <div class="left">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="label" id="driveStatusLabel">Checking Google connection…</span>
+    </div>
+    <a class="connect-btn" id="driveConnectBtn" href="/auth/google?redirect=/ocr.html">Connect</a>
+  </div>
+</form>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const cameraInput = document.getElementById('cameraInput');
+  const chooseFileBtn = document.getElementById('chooseFileBtn');
+  const takePhotoBtn = document.getElementById('takePhotoBtn');
+  const filePreview = document.getElementById('filePreview');
+  const previewImg = document.getElementById('previewImg');
+  const previewName = document.getElementById('previewName');
+  const removeFileBtn = document.getElementById('removeFileBtn');
+  const form = document.getElementById('ocrForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusMsg = document.getElementById('statusMsg');
+  const stamp = document.getElementById('stamp');
+  const driveStatus = document.getElementById('driveStatus');
+  const driveStatusLabel = document.getElementById('driveStatusLabel');
+  const driveConnectBtn = document.getElementById('driveConnectBtn');
+
+  let selectedFile = null;
+  let driveConnected = false;
+
+  function withRedirect(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}redirect=/ocr.html`;
+  }
+
+  function setDriveStatus(state, label) {
+    driveStatus.className = `drive-status ${state}`;
+    driveStatusLabel.textContent = label;
+    driveConnected = state === 'connected';
+  }
+
+  function markAuthRequired(message) {
+    setDriveStatus('disconnected', message || 'Google auth connection required — reconnect Drive');
+  }
+
+  async function refreshAuthStatus() {
+    setDriveStatus('checking', 'Checking Google connection…');
+    try {
+      const res = await fetch('/api/auth-status', { cache: 'no-store' });
+      const data = await res.json();
+      driveConnectBtn.href = withRedirect(data.authUrl || '/auth/google');
+
+      if (data.connected) {
+        const who = data.email ? ` · ${data.email}` : '';
+        setDriveStatus('connected', `Google connected ✓ (Drive)${who}`);
+        return true;
+      }
+
+      markAuthRequired(
+        data.message ||
+          (data.reason === 'expired'
+            ? 'Google auth expired — reconnect required'
+            : 'Google auth connection required')
+      );
+      return false;
+    } catch (err) {
+      markAuthRequired('Could not check Google Drive connection');
+      return false;
+    }
+  }
+
+  chooseFileBtn.addEventListener('click', () => fileInput.click());
+  takePhotoBtn.addEventListener('click', () => cameraInput.click());
+
+  function handleFile(file) {
+    selectedFile = file;
+    previewName.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewImg.src = e.target.result;
+      previewImg.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+    filePreview.classList.add('show');
+  }
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  cameraInput.addEventListener('change', () => {
+    if (cameraInput.files[0]) handleFile(cameraInput.files[0]);
+  });
+
+  removeFileBtn.addEventListener('click', () => {
+    selectedFile = null;
+    fileInput.value = '';
+    cameraInput.value = '';
+    filePreview.classList.remove('show');
+    previewImg.style.display = 'none';
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    statusMsg.textContent = '';
+    statusMsg.classList.remove('error');
+    stamp.classList.remove('show');
+
+    if (!selectedFile) {
+      statusMsg.textContent = 'Please attach or photograph an image.';
+      statusMsg.classList.add('error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('image', selectedFile);
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    statusMsg.textContent = 'Uploading to Google Drive…';
+
+    try {
+      const res = await fetch('/api/ocr/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          markAuthRequired('Google auth connection required');
+          throw new Error('Google account is not connected.');
+        }
+        throw new Error(data.error || 'Upload failed.');
+      }
+
+      setDriveStatus('connected', 'Google connected ✓');
+
+      statusMsg.textContent = '';
+      stamp.innerHTML = `Saved ✓<br><a href="${data.proofLink}" target="_blank" rel="noopener" style="font-size:10px;">View in Drive</a>`;
+      stamp.classList.add('show');
+
+      selectedFile = null;
+      fileInput.value = '';
+      cameraInput.value = '';
+      filePreview.classList.remove('show');
+      previewImg.style.display = 'none';
+    } catch (err) {
+      statusMsg.classList.add('error');
+      if (err.message && err.message.includes('Google account is not connected')) {
+        statusMsg.innerHTML = 'Google Drive is not connected. <a href="/auth/google?redirect=/ocr.html" target="_blank" rel="noopener">Connect Google account</a> and try again.';
+      } else {
+        statusMsg.textContent = err.message || 'Something went wrong. Please try again.';
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Save to Drive';
+    }
+  });
+
+  (async function init() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('drive') === 'connected') {
+      statusMsg.textContent = '';
+      stamp.innerHTML = 'Google connected ✓';
+      stamp.classList.add('show');
+      window.history.replaceState({}, '', '/ocr.html');
+    }
+    await refreshAuthStatus();
+  })();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshAuthStatus();
+  });
+</script>
+
+</body>
+</html>

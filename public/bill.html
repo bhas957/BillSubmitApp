@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bill Submission Slip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f6f4ee;
+    --paper-edge: #eae6d9;
+    --ink: #211f1a;
+    --ink-soft: #6b6558;
+    --line: #cdc6b3;
+    --accent: #3b4fb5;
+    --accent-ink: #2c3b8c;
+    --stamp-green: #1f7a46;
+    --stamp-red: #b3372c;
+    --fare: #1f7a46;
+    --radius: 2px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(180deg, #e9e6dc 0%, #dedad0 100%);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 32px 16px 64px;
+  }
+
+  .slip {
+    width: 100%;
+    max-width: 420px;
+    background: var(--paper);
+    position: relative;
+    box-shadow: 0 18px 40px -20px rgba(30, 28, 22, 0.45), 0 2px 0 var(--paper-edge);
+    padding: 28px 26px 32px;
+  }
+
+  /* torn perforated bottom edge */
+  .slip::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -10px;
+    height: 20px;
+    background: linear-gradient(-45deg, var(--paper) 8px, transparent 0),
+                linear-gradient(45deg, var(--paper) 8px, transparent 0);
+    background-position: left top;
+    background-repeat: repeat-x;
+    background-size: 16px 20px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 22px;
+  }
+
+  .masthead {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    font-size: 15px;
+    text-transform: uppercase;
+  }
+
+  .subhead {
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    letter-spacing: 0.08em;
+  }
+
+  .dashed-rule {
+    border: none;
+    border-top: 2px dashed var(--line);
+    margin: 18px 0;
+  }
+
+  .field {
+    margin-bottom: 18px;
+  }
+
+  .field label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+
+  .field label .opt {
+    font-style: italic;
+    text-transform: none;
+    letter-spacing: 0;
+    font-family: 'Inter', sans-serif;
+  }
+
+  input[type="text"],
+  input[type="number"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    color: var(--ink);
+  }
+
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .amount-wrap {
+    position: relative;
+  }
+  .amount-wrap .rupee {
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+  .amount-wrap input {
+    padding-left: 28px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+  }
+
+  /* ---- Calendar (fare-style amounts) ---- */
+  .calendar {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    overflow: hidden;
+  }
+
+  .cal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    background: #faf8f2;
+  }
+
+  .cal-header .month-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .cal-nav {
+    border: 1px solid var(--line);
+    background: transparent;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink);
+  }
+  .cal-nav:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .cal-nav:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .cal-weekdays,
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  .cal-weekdays {
+    padding: 6px 4px 0;
+  }
+
+  .cal-weekdays span {
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    padding: 4px 0;
+  }
+
+  .cal-grid {
+    padding: 4px;
+    gap: 2px;
+  }
+
+  .cal-day {
+    min-height: 48px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius);
+    padding: 4px 2px 3px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1px;
+    color: var(--ink);
+  }
+  .cal-day:hover:not(:disabled) { background: #f0ede3; }
+  .cal-day:disabled {
+    opacity: 0.28;
+    cursor: default;
+  }
+  .cal-day.empty {
+    cursor: default;
+    min-height: 48px;
+  }
+  .cal-day.selected {
+    background: #e7ebf8;
+    outline: 1.5px solid var(--accent);
+  }
+  .cal-day.today .day-num {
+    font-weight: 700;
+    color: var(--accent-ink);
+  }
+  .cal-day.has-bills .day-num {
+    font-weight: 600;
+  }
+
+  .day-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    line-height: 1.1;
+  }
+
+  .day-fare {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8.5px;
+    line-height: 1.1;
+    color: var(--fare);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .date-hint {
+    margin-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-soft);
+    min-height: 16px;
+  }
+  .date-hint.warn {
+    color: #9a4a1a;
+    background: #fff4e8;
+    border: 1px solid #efd2ad;
+    padding: 8px 10px;
+    border-radius: var(--radius);
+  }
+
+  .zomato-sync-buttons {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .sync-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 9px 8px;
+    border: 1.5px solid #e23744;
+    background: #fff8f8;
+    color: #c81e2b;
+    border-radius: var(--radius);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .sync-btn:hover:not(:disabled) { background: #fff0f1; border-color: #c81e2b; color: #a01620; }
+  .sync-btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .sync-status {
+    margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    min-height: 14px;
+  }
+  .sync-status.error { color: var(--stamp-red); }
+  .sync-status.ok { color: var(--stamp-green); }
+
+  .upload-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .upload-btn {
+    flex: 1;
+    min-width: 110px;
+    padding: 12px 8px;
+    border: 1.5px dashed var(--line);
+    background: transparent;
+    border-radius: var(--radius);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .upload-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .upload-btn.svg-safe svg { width: 15px; height: 15px; flex: none; }
+  .upload-btn svg { width: 15px; height: 15px; flex: none; }
+
+  .upload-btn.zomato {
+    flex: 1 1 100%;
+    border-style: solid;
+    border-color: #e23744;
+    color: #c81e2b;
+    background: #fff8f8;
+  }
+  .upload-btn.zomato:hover {
+    border-color: #c81e2b;
+    color: #a01620;
+    background: #fff0f1;
+  }
+  .upload-btn.zomato:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
+
+  #fileInput, #cameraInput, #zomatoInput { display: none; }
+
+  .file-preview {
+    margin-top: 10px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    font-size: 13px;
+  }
+  .file-preview.show { display: flex; }
+  .file-preview img {
+    width: 38px; height: 38px; object-fit: cover; border-radius: 2px; flex: none;
+  }
+  .file-preview .name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .file-preview .remove {
+    border: none;
+    background: none;
+    color: var(--stamp-red);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .submit-btn {
+    width: 100%;
+    margin-top: 6px;
+    padding: 14px;
+    border: 2px solid var(--accent-ink);
+    background: var(--accent);
+    color: #fdfcf9;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 13px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: transform 0.05s ease;
+  }
+  .submit-btn:active { transform: translateY(1px); }
+  .submit-btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .status {
+    margin-top: 18px;
+    min-height: 20px;
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+  }
+
+  .status.error { color: var(--stamp-red); }
+
+  .stamp {
+    display: none;
+    margin: 14px auto 0;
+    width: fit-content;
+    padding: 8px 18px;
+    border: 3px solid var(--stamp-green);
+    color: var(--stamp-green);
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-size: 13px;
+    border-radius: 4px;
+    transform: rotate(-6deg);
+  }
+  .stamp.show {
+    display: block;
+    animation: stampIn 0.35s ease-out;
+  }
+  @keyframes stampIn {
+    0% { opacity: 0; transform: rotate(-6deg) scale(1.6); }
+    60% { opacity: 1; }
+    100% { opacity: 1; transform: rotate(-6deg) scale(1); }
+  }
+  .stamp a { color: inherit; }
+
+  .drive-status {
+    margin-top: 20px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: #fffefb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+  }
+  .drive-status .left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .drive-status .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #b5ae9b;
+    flex: none;
+  }
+  .drive-status.connected .dot { background: var(--stamp-green); }
+  .drive-status.disconnected .dot { background: var(--stamp-red); }
+  .drive-status.checking .dot { background: #c9a227; }
+  .drive-status .label {
+    color: var(--ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .drive-status.connected .label { color: var(--stamp-green); font-weight: 600; }
+  .drive-status.disconnected .label { color: var(--stamp-red); }
+  .drive-status .connect-btn {
+    flex: none;
+    border: 1px solid var(--stamp-red);
+    background: transparent;
+    color: var(--stamp-red);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .drive-status .connect-btn:hover { background: #fff0ef; }
+  .drive-status.connected .connect-btn { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stamp.show { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<form class="slip" id="billForm" novalidate>
+  <header>
+    <div class="masthead">Bill Submission Slip</div>
+    <div class="subhead" id="today"></div>
+  </header>
+
+  <hr class="dashed-rule" />
+
+  <div class="field">
+    <label>Date</label>
+    <input type="hidden" id="date" name="date" required />
+    <div class="calendar" id="calendar">
+      <div class="cal-header">
+        <button type="button" class="cal-nav" id="calPrev" aria-label="Previous month">‹</button>
+        <div class="month-label" id="calMonthLabel"></div>
+        <button type="button" class="cal-nav" id="calNext" aria-label="Next month">›</button>
+      </div>
+      <div class="cal-weekdays">
+        <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+    <div class="date-hint" id="dateHint"></div>
+    <div class="zomato-sync-buttons">
+      <button type="button" class="sync-btn" id="syncDateBtn">Auto-sync Zomato orders — this date (via Gmail)</button>
+      <button type="button" class="sync-btn" id="syncMonthBtn">Auto-sync Zomato orders — this month (via Gmail)</button>
+    </div>
+    <div class="sync-status" id="syncStatus"></div>
+  </div>
+
+  <div class="field">
+    <label for="amount">Amount <span class="opt">(in rupees)</span></label>
+    <div class="amount-wrap">
+      <span class="rupee">₹</span>
+      <input type="number" id="amount" name="amount" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" required />
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="merchant">Merchant <span class="opt">(optional)</span></label>
+    <input type="text" id="merchant" name="merchant" placeholder="e.g. Swiggy, Local canteen" />
+  </div>
+
+  <div class="field">
+    <label>Bill / Receipt</label>
+    <div class="upload-buttons">
+      <button type="button" class="upload-btn" id="chooseFileBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Upload file
+      </button>
+      <button type="button" class="upload-btn" id="takePhotoBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        Take photo
+      </button>
+      <button type="button" class="upload-btn zomato" id="zomatoBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9M10 6H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/></svg>
+        Upload Zomato bill
+      </button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf" />
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" />
+    <input type="file" id="zomatoInput" accept=".pdf,application/pdf" />
+
+    <div class="file-preview" id="filePreview">
+      <img id="previewImg" alt="" style="display:none" />
+      <span class="name" id="previewName"></span>
+      <button type="button" class="remove" id="removeFileBtn">Remove</button>
+    </div>
+  </div>
+
+  <button type="submit" class="submit-btn" id="submitBtn">Submit bill</button>
+
+  <div class="status" id="statusMsg"></div>
+  <div class="stamp" id="stamp"></div>
+
+  <div class="drive-status checking" id="driveStatus">
+    <div class="left">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="label" id="driveStatusLabel">Checking Google connection…</span>
+    </div>
+    <a class="connect-btn" id="driveConnectBtn" href="/auth/google?redirect=/bill.html">Connect</a>
+  </div>
+</form>
+
+<script>
+  const dateInput = document.getElementById('date');
+  const amountInput = document.getElementById('amount');
+  const merchantInput = document.getElementById('merchant');
+  const fileInput = document.getElementById('fileInput');
+  const cameraInput = document.getElementById('cameraInput');
+  const zomatoInput = document.getElementById('zomatoInput');
+  const chooseFileBtn = document.getElementById('chooseFileBtn');
+  const takePhotoBtn = document.getElementById('takePhotoBtn');
+  const zomatoBtn = document.getElementById('zomatoBtn');
+  const filePreview = document.getElementById('filePreview');
+  const previewImg = document.getElementById('previewImg');
+  const previewName = document.getElementById('previewName');
+  const removeFileBtn = document.getElementById('removeFileBtn');
+  const form = document.getElementById('billForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusMsg = document.getElementById('statusMsg');
+  const stamp = document.getElementById('stamp');
+  const todayLabel = document.getElementById('today');
+  const dateHint = document.getElementById('dateHint');
+  const calGrid = document.getElementById('calGrid');
+  const calMonthLabel = document.getElementById('calMonthLabel');
+  const calPrev = document.getElementById('calPrev');
+  const calNext = document.getElementById('calNext');
+  const driveStatus = document.getElementById('driveStatus');
+  const driveStatusLabel = document.getElementById('driveStatusLabel');
+  const driveConnectBtn = document.getElementById('driveConnectBtn');
+  const syncDateBtn = document.getElementById('syncDateBtn');
+  const syncMonthBtn = document.getElementById('syncMonthBtn');
+  const syncStatus = document.getElementById('syncStatus');
+
+  let selectedFile = null;
+  let billsByDate = {};
+  let driveConnected = false;
+  let viewYear;
+  let viewMonth; // 0-indexed
+  let dailyCap = 300;
+
+  function withRedirect(url) {
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}redirect=/bill.html`;
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function toDateStr(d) {
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  const now = new Date();
+  const todayStr = toDateStr(now);
+  const minDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  const minDateStr = toDateStr(minDate);
+  const maxDateStr = toDateStr(maxDate);
+
+  viewYear = now.getFullYear();
+  viewMonth = now.getMonth();
+  dateInput.value = todayStr;
+
+  todayLabel.textContent = now.toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  }).toUpperCase();
+
+  function formatFare(amount) {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return '';
+    if (n >= 1000) {
+      return `₹${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
+    }
+    if (Number.isInteger(n) || n % 1 === 0) return `₹${Math.round(n)}`;
+    return `₹${n.toFixed(0)}`;
+  }
+
+  function formatRupees(amount) {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return '0';
+    return n.toLocaleString('en-IN', {
+      minimumFractionDigits: n % 1 ? 2 : 0,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function canNavigate(year, month) {
+    const first = `${year}-${pad(month + 1)}-01`;
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const last = `${year}-${pad(month + 1)}-${pad(lastDay)}`;
+    return last >= minDateStr && first <= maxDateStr;
+  }
+
+  function updateDateHint() {
+    const selected = dateInput.value;
+    const summary = billsByDate[selected];
+    if (summary && summary.count > 0) {
+      const billWord = summary.count === 1 ? 'bill' : 'bills';
+      dateHint.className = 'date-hint warn';
+      if (summary.total >= dailyCap) {
+        dateHint.textContent =
+          `Daily ₹${formatRupees(dailyCap)} allowance already reached for this date — ${summary.count} ${billWord}, total ₹${formatRupees(summary.total)}.`;
+      } else {
+        dateHint.textContent =
+          `Already submitted ${summary.count} ${billWord} for this date — total ₹${formatRupees(summary.total)}. You can still add another.`;
+      }
+    } else {
+      dateHint.className = 'date-hint';
+      dateHint.textContent = selected
+        ? `Selected: ${new Date(selected + 'T12:00:00').toLocaleDateString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric'
+          })}`
+        : '';
+    }
+  }
+
+  function renderCalendar() {
+    calMonthLabel.textContent = new Date(viewYear, viewMonth, 1)
+      .toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+      .toUpperCase();
+
+    const prevMonth = viewMonth === 0 ? 11 : viewMonth - 1;
+    const prevYear = viewMonth === 0 ? viewYear - 1 : viewYear;
+    const nextMonth = viewMonth === 11 ? 0 : viewMonth + 1;
+    const nextYear = viewMonth === 11 ? viewYear + 1 : viewYear;
+    calPrev.disabled = !canNavigate(prevYear, prevMonth);
+    calNext.disabled = !canNavigate(nextYear, nextMonth);
+
+    const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    calGrid.innerHTML = '';
+
+    for (let i = 0; i < firstDow; i += 1) {
+      const empty = document.createElement('div');
+      empty.className = 'cal-day empty';
+      calGrid.appendChild(empty);
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const dateStr = `${viewYear}-${pad(viewMonth + 1)}-${pad(day)}`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cal-day';
+      btn.dataset.date = dateStr;
+
+      const outOfRange = dateStr < minDateStr || dateStr > maxDateStr;
+      btn.disabled = outOfRange;
+
+      if (dateStr === todayStr) btn.classList.add('today');
+      if (dateStr === dateInput.value) btn.classList.add('selected');
+
+      const summary = billsByDate[dateStr];
+      if (summary && summary.count > 0) btn.classList.add('has-bills');
+
+      const num = document.createElement('span');
+      num.className = 'day-num';
+      num.textContent = String(day);
+      btn.appendChild(num);
+
+      if (summary && summary.count > 0) {
+        const fare = document.createElement('span');
+        fare.className = 'day-fare';
+        fare.textContent = formatFare(summary.total);
+        fare.title = `₹${formatRupees(summary.total)} (${summary.count} bill${summary.count > 1 ? 's' : ''})`;
+        btn.appendChild(fare);
+      }
+
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        dateInput.value = dateStr;
+        renderCalendar();
+        updateDateHint();
+      });
+
+      calGrid.appendChild(btn);
+    }
+
+    updateDateHint();
+  }
+
+  calPrev.addEventListener('click', () => {
+    if (viewMonth === 0) { viewMonth = 11; viewYear -= 1; }
+    else viewMonth -= 1;
+    renderCalendar();
+  });
+
+  calNext.addEventListener('click', () => {
+    if (viewMonth === 11) { viewMonth = 0; viewYear += 1; }
+    else viewMonth += 1;
+    renderCalendar();
+  });
+
+  function setDriveStatus(state, label) {
+    driveStatus.className = `drive-status ${state}`;
+    driveStatusLabel.textContent = label;
+    driveConnected = state === 'connected';
+  }
+
+  function markAuthRequired(message) {
+    setDriveStatus(
+      'disconnected',
+      message || 'Google auth connection required — reconnect Drive'
+    );
+  }
+
+  async function refreshAuthStatus() {
+    setDriveStatus('checking', 'Checking Google connection…');
+    try {
+      const res = await fetch('/api/auth-status', { cache: 'no-store' });
+      const data = await res.json();
+      driveConnectBtn.href = withRedirect(data.authUrl || '/auth/google');
+
+      if (data.connected) {
+        const who = data.email ? ` · ${data.email}` : '';
+        setDriveStatus('connected', `Google connected ✓ (Drive + Gmail)${who}`);
+        return true;
+      }
+
+      markAuthRequired(
+        data.message ||
+          (data.reason === 'expired'
+            ? 'Google auth expired — reconnect required'
+            : 'Google auth connection required')
+      );
+      return false;
+    } catch (err) {
+      markAuthRequired('Could not check Google Drive connection');
+      return false;
+    }
+  }
+
+  async function loadBills() {
+    try {
+      const res = await fetch('/api/bills', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          markAuthRequired('Google auth connection required — reconnect to load bills');
+          billsByDate = {};
+          renderCalendar();
+          return;
+        }
+        throw new Error(data.error || 'Could not load bills');
+      }
+      if (!driveConnected) {
+        setDriveStatus('connected', 'Google connected ✓');
+      }
+      billsByDate = data.byDate || {};
+      if (Number.isFinite(Number(data.dailyCap))) dailyCap = Number(data.dailyCap);
+      renderCalendar();
+    } catch (err) {
+      console.warn('Could not load existing bills:', err.message);
+      dateHint.className = 'date-hint warn';
+      dateHint.textContent = 'Could not load saved bill amounts for the calendar.';
+      renderCalendar();
+    }
+  }
+
+  function applyByDate(byDate) {
+    if (byDate && typeof byDate === 'object') {
+      billsByDate = byDate;
+      renderCalendar();
+    } else {
+      loadBills();
+    }
+  }
+
+  // --- Upload buttons trigger hidden file inputs ---
+  chooseFileBtn.addEventListener('click', () => fileInput.click());
+  takePhotoBtn.addEventListener('click', () => cameraInput.click());
+  zomatoBtn.addEventListener('click', () => zomatoInput.click());
+
+  function handleFile(file) {
+    selectedFile = file;
+    previewName.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    } else {
+      previewImg.style.display = 'none';
+    }
+    filePreview.classList.add('show');
+  }
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  cameraInput.addEventListener('change', () => {
+    if (cameraInput.files[0]) handleFile(cameraInput.files[0]);
+  });
+
+  removeFileBtn.addEventListener('click', () => {
+    selectedFile = null;
+    fileInput.value = '';
+    cameraInput.value = '';
+    filePreview.classList.remove('show');
+    previewImg.style.display = 'none';
+  });
+
+  // --- Zomato: pick PDF → parse + save immediately ---
+  zomatoInput.addEventListener('change', async () => {
+    const file = zomatoInput.files[0];
+    zomatoInput.value = '';
+    if (!file) return;
+
+    statusMsg.textContent = '';
+    statusMsg.classList.remove('error');
+    stamp.classList.remove('show');
+
+    zomatoBtn.disabled = true;
+    zomatoBtn.textContent = 'Parsing Zomato bill…';
+    statusMsg.textContent = 'Reading Zomato receipt and saving…';
+
+    const formData = new FormData();
+    formData.append('bill', file);
+
+    try {
+      const res = await fetch('/api/submit-zomato', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          markAuthRequired('Google auth connection required');
+          throw new Error('Google account is not connected.');
+        }
+        throw new Error(data.error || 'Zomato upload failed.');
+      }
+
+      setDriveStatus('connected', 'Google connected ✓');
+      applyByDate(data.byDate);
+
+      if (data.parsed && data.parsed.date) {
+        dateInput.value = data.parsed.date;
+        const [y, m] = data.parsed.date.split('-').map(Number);
+        viewYear = y;
+        viewMonth = m - 1;
+        renderCalendar();
+      }
+
+      const parsed = data.parsed || {};
+      const dayNote = data.daySummary && data.daySummary.count > 1
+        ? `<br><span style="font-size:10px;font-weight:500;">Day total now ₹${formatRupees(data.daySummary.total)}</span>`
+        : '';
+
+      statusMsg.textContent = '';
+      stamp.innerHTML =
+        `Zomato saved ✓<br>` +
+        `<span style="font-size:10px;font-weight:500;">` +
+        `${parsed.date || ''} · ₹${formatRupees(parsed.amount)} · ${parsed.merchant || 'Zomato'}` +
+        `</span>` +
+        dayNote +
+        `<br><a href="${data.proofLink}" target="_blank" rel="noopener" style="font-size:10px;">View proof</a>`;
+      stamp.classList.add('show');
+    } catch (err) {
+      statusMsg.classList.add('error');
+      if (err.message && err.message.includes('Google account is not connected')) {
+        statusMsg.innerHTML = 'Google Drive is not connected. <a href="/auth/google?redirect=/bill.html" target="_blank" rel="noopener">Connect Google account</a> and try again.';
+      } else {
+        statusMsg.textContent = err.message || 'Could not save Zomato bill.';
+      }
+    } finally {
+      zomatoBtn.disabled = false;
+      zomatoBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7M21 3l-9 9M10 6H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5"/></svg> Upload Zomato bill';
+    }
+  });
+
+  // --- Zomato: auto-sync orders from Gmail (per date or per month) ---
+  const syncBtnLabels = {
+    date: 'Auto-sync Zomato orders — this date (via Gmail)',
+    month: 'Auto-sync Zomato orders — this month (via Gmail)',
+  };
+
+  async function runZomatoGmailSync(mode) {
+    if (!dateInput.value) {
+      syncStatus.className = 'sync-status error';
+      syncStatus.textContent = 'Please pick a date first.';
+      return;
+    }
+
+    const btn = mode === 'month' ? syncMonthBtn : syncDateBtn;
+    const otherBtn = mode === 'month' ? syncDateBtn : syncMonthBtn;
+
+    syncDateBtn.disabled = true;
+    syncMonthBtn.disabled = true;
+    btn.textContent = mode === 'month' ? 'Syncing this month…' : 'Syncing this date…';
+    syncStatus.className = 'sync-status';
+    syncStatus.textContent = 'Checking Gmail for Zomato orders…';
+
+    try {
+      const res = await fetch('/api/sync-zomato-gmail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: dateInput.value, mode }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          markAuthRequired('Reconnect Google to allow Gmail access for Zomato sync');
+          throw new Error('Google account is not connected.');
+        }
+        throw new Error(data.error || 'Zomato Gmail sync failed.');
+      }
+
+      applyByDate(data.byDate);
+      if (Number.isFinite(Number(data.dailyCap))) dailyCap = Number(data.dailyCap);
+
+      const s = data.summary || {};
+      syncStatus.className = 'sync-status ok';
+      syncStatus.textContent = s.dayComplete
+        ? data.message
+        : `${data.message} (found ${s.found || 0}, already synced ${s.alreadySynced || 0}` +
+          (s.capSkipped ? `, cap-skipped ${s.capSkipped}` : '') +
+          (s.errors ? `, errors ${s.errors}` : '') + ')';
+    } catch (err) {
+      syncStatus.className = 'sync-status error';
+      if (err.message && err.message.includes('Google account is not connected')) {
+        syncStatus.innerHTML = 'Google account not connected for Gmail access. <a href="/auth/google?redirect=/bill.html" target="_blank" rel="noopener">Connect Google account</a> and try again.';
+      } else {
+        syncStatus.textContent = err.message || 'Could not sync Zomato orders from Gmail.';
+      }
+    } finally {
+      syncDateBtn.disabled = false;
+      syncMonthBtn.disabled = false;
+      btn.textContent = syncBtnLabels[mode === 'month' ? 'month' : 'date'];
+      otherBtn.textContent = syncBtnLabels[mode === 'month' ? 'date' : 'month'];
+    }
+  }
+
+  syncDateBtn.addEventListener('click', () => runZomatoGmailSync('date'));
+  syncMonthBtn.addEventListener('click', () => runZomatoGmailSync('month'));
+
+  // --- Submit manual bill ---
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    statusMsg.textContent = '';
+    statusMsg.classList.remove('error');
+    stamp.classList.remove('show');
+
+    if (!dateInput.value) {
+      statusMsg.textContent = 'Please pick a date.';
+      statusMsg.classList.add('error');
+      return;
+    }
+    if (!amountInput.value || Number(amountInput.value) <= 0) {
+      statusMsg.textContent = 'Please enter a valid amount.';
+      statusMsg.classList.add('error');
+      return;
+    }
+    if (!selectedFile) {
+      statusMsg.textContent = 'Please attach or photograph the bill.';
+      statusMsg.classList.add('error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('date', dateInput.value);
+    formData.append('amount', amountInput.value);
+    formData.append('merchant', merchantInput.value || '');
+    formData.append('bill', selectedFile);
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Saving…';
+    statusMsg.textContent = 'Uploading to Google Drive…';
+
+    try {
+      const res = await fetch('/api/submit', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          markAuthRequired('Google auth connection required');
+          throw new Error('Google account is not connected.');
+        }
+        throw new Error(data.error || 'Submission failed.');
+      }
+
+      setDriveStatus('connected', 'Google connected ✓');
+      applyByDate(data.byDate);
+
+      statusMsg.textContent = '';
+      stamp.innerHTML = `Submitted ✓<br><a href="${data.proofLink}" target="_blank" rel="noopener" style="font-size:10px;">View proof</a>`;
+      stamp.classList.add('show');
+
+      amountInput.value = '';
+      merchantInput.value = '';
+      selectedFile = null;
+      fileInput.value = '';
+      cameraInput.value = '';
+      filePreview.classList.remove('show');
+      previewImg.style.display = 'none';
+      updateDateHint();
+    } catch (err) {
+      statusMsg.classList.add('error');
+      if (err.message && err.message.includes('Google account is not connected')) {
+        statusMsg.innerHTML = 'Google Drive is not connected. <a href="/auth/google?redirect=/bill.html" target="_blank" rel="noopener">Connect Google account</a> and try again.';
+      } else {
+        statusMsg.textContent = err.message || 'Something went wrong. Please try again.';
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit bill';
+    }
+  });
+
+  renderCalendar();
+
+  (async function init() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('drive') === 'connected') {
+      statusMsg.textContent = '';
+      stamp.innerHTML = 'Google connected ✓';
+      stamp.classList.add('show');
+      window.history.replaceState({}, '', '/');
+    }
+
+    const ok = await refreshAuthStatus();
+    if (ok) await loadBills();
+    else {
+      billsByDate = {};
+      renderCalendar();
+    }
+  })();
+
+  // If user reconnects in another tab, refresh status when they come back.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      refreshAuthStatus().then((ok) => {
+        if (ok) loadBills();
+      });
+    }
+  });
+</script>
+
+</body>
+</html>

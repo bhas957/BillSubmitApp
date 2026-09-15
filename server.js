@@ -10,6 +10,7 @@ const { parseZomatoReceipt } = require('./zomatoParser');
 
 const PORT = process.env.PORT || 3000;
 const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
+const OCR_DRIVE_FOLDER_ID = process.env.OCR_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID;
 const CSV_FILE_NAME = process.env.CSV_FILE_NAME || 'food_bills.csv';
 const OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
 const OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
@@ -22,6 +23,7 @@ const OAUTH_SCOPES = [
 const ZOMATO_GMAIL_QUERY = process.env.ZOMATO_GMAIL_QUERY
   || '(from:zomato.com OR subject:zomato) has:attachment filename:pdf';
 const SYNCED_STORE_FILE = process.env.ZOMATO_GMAIL_SYNCED_FILE || './zomato-gmail-synced.json';
+const COMPLETED_DAYS_FILE = process.env.ZOMATO_COMPLETED_DAYS_FILE || './zomato-completed-days.json';
 const DAILY_REIMBURSEMENT_CAP = Number(process.env.DAILY_REIMBURSEMENT_CAP || 300);
 
 if (!DRIVE_FOLDER_ID) {
@@ -92,11 +94,20 @@ oauth2Client.on('tokens', (tokens) => {
   }
 });
 
-function createAuthUrl() {
+// Whitelist of pages the OAuth flow is allowed to bounce back to, so the
+// callback's redirect target can't be hijacked into an open redirect.
+const ALLOWED_OAUTH_REDIRECTS = new Set(['/', '/bill.html', '/ocr.html']);
+
+function safeOAuthRedirect(value) {
+  return ALLOWED_OAUTH_REDIRECTS.has(value) ? value : '/';
+}
+
+function createAuthUrl(redirectTo) {
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: OAUTH_SCOPES,
+    state: safeOAuthRedirect(redirectTo),
   });
 }
 
@@ -309,6 +320,36 @@ async function uploadBillFile(drive, file, date, amount) {
   return res.data; // { id, webViewLink }
 }
 
+function buildOcrFileBaseName() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const ss = String(now.getSeconds()).padStart(2, '0');
+  return `ocr_${y}${m}${d}_${hh}${mm}${ss}`;
+}
+
+async function uploadOcrImage(drive, file) {
+  const ext = getFileExtension(file) || '.jpg';
+  const fileName = `${buildOcrFileBaseName()}${ext}`;
+
+  const res = await drive.files.create({
+    requestBody: {
+      name: fileName,
+      parents: [OCR_DRIVE_FOLDER_ID],
+    },
+    media: {
+      mimeType: file.mimetype,
+      body: bufferToStream(file.buffer),
+    },
+    fields: 'id, webViewLink',
+  });
+
+  return res.data; // { id, webViewLink }
+}
+
 async function findCsvFile(drive) {
   const res = await drive.files.list({
     q: `name='${CSV_FILE_NAME}' and '${DRIVE_FOLDER_ID}' in parents and trashed=false`,
@@ -501,6 +542,27 @@ function saveSyncedMessageIds(set) {
   fs.writeFileSync(syncedStorePath(), JSON.stringify([...set], null, 2), 'utf8');
 }
 
+function completedDaysStorePath() {
+  return path.resolve(__dirname, COMPLETED_DAYS_FILE);
+}
+
+// Dates whose ₹DAILY_REIMBURSEMENT_CAP allowance has already been fully
+// accounted for by a previous sync — future syncs skip Gmail entirely for them.
+function loadCompletedDays() {
+  try {
+    if (!fs.existsSync(completedDaysStorePath())) return new Set();
+    const data = JSON.parse(fs.readFileSync(completedDaysStorePath(), 'utf8'));
+    return new Set(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error('Could not read Zomato completed-days store:', err.message);
+    return new Set();
+  }
+}
+
+function saveCompletedDays(set) {
+  fs.writeFileSync(completedDaysStorePath(), JSON.stringify([...set], null, 2), 'utf8');
+}
+
 async function listGmailMessageIds(gmail, query) {
   const ids = [];
   let pageToken;
@@ -517,11 +579,60 @@ async function listGmailMessageIds(gmail, query) {
   return ids;
 }
 
-// Scans Gmail for Zomato order emails in the given date/month, parses any PDF
-// receipts found, and saves new ones the same way the manual Zomato upload
-// does (Drive file + CSV row). Already-processed messages are skipped using
-// a small local store so re-running the sync is safe.
+// For a single Gmail message, download every PDF attachment, parse each as a
+// Zomato receipt, and keep only the highest-value one — Zomato sends both an
+// "Invoice" PDF and an "Order ID" PDF per order, and we only want to upload
+// and record one bill per real-world order.
+async function parseBestAttachmentForMessage(gmail, messageId, pdfParts) {
+  let best = null;
+  for (const part of pdfParts) {
+    const attachRes = await gmail.users.messages.attachments.get({
+      userId: 'me',
+      messageId,
+      id: part.attachmentId,
+    });
+    const buffer = Buffer.from(attachRes.data.data, 'base64');
+
+    let parsed;
+    try {
+      parsed = await parseZomatoReceipt(buffer);
+    } catch (err) {
+      continue; // Not a parseable Zomato receipt — try the next attachment, if any.
+    }
+
+    if (!best || parsed.amount > best.parsed.amount) {
+      best = {
+        parsed,
+        buffer,
+        filename: part.filename || `${parsed.date}.pdf`,
+      };
+    }
+  }
+  return best;
+}
+
+// Scans Gmail for Zomato order emails in the given date/month, parses the PDF
+// receipts found (picking the higher-value PDF per order), and applies the
+// company's daily reimbursement cap: for each date, orders are ranked highest
+// amount first and accepted while the running total stays within the cap: as
+// soon as the next order (in that order) would push the total over the cap,
+// selection for that date stops and the date is marked complete so future
+// syncs skip Gmail entirely for it. Already-processed messages are skipped
+// using a small local store so re-running the sync is safe.
 async function syncZomatoFromGmail({ dateStr, mode }) {
+  const completedDays = loadCompletedDays();
+  if (mode === 'day' && completedDays.has(dateStr)) {
+    return {
+      found: 0,
+      synced: 0,
+      alreadySynced: 0,
+      skipped: 0,
+      capSkipped: 0,
+      errors: 0,
+      dayComplete: true,
+    };
+  }
+
   const tokens = loadSavedTokens();
   if (!tokens) throw authRequiredError();
   oauth2Client.setCredentials(tokens);
@@ -542,14 +653,8 @@ async function syncZomatoFromGmail({ dateStr, mode }) {
     errors: 0,
   };
 
-  // Seed each date's running total from what's already saved, so the cap
-  // accounts for both prior manual submissions and prior syncs.
-  const { byDate: existingByDate } = await readAllBills(drive);
-  const dailyTotals = {};
-  for (const [date, info] of Object.entries(existingByDate)) {
-    dailyTotals[date] = info.total;
-  }
-
+  // Gather one best-of-two-PDFs candidate order per unprocessed message.
+  const candidates = []; // { messageId, parsed, buffer, filename }
   for (const messageId of messageIds) {
     if (syncedIds.has(messageId)) {
       summary.alreadySynced += 1;
@@ -559,53 +664,15 @@ async function syncZomatoFromGmail({ dateStr, mode }) {
     try {
       const msgRes = await gmail.users.messages.get({ userId: 'me', id: messageId, format: 'full' });
       const pdfParts = findPdfAttachmentParts(msgRes.data.payload);
+      const best = await parseBestAttachmentForMessage(gmail, messageId, pdfParts);
 
-      let processedAny = false;
-      let cappedAny = false;
-      for (const part of pdfParts) {
-        const attachRes = await gmail.users.messages.attachments.get({
-          userId: 'me',
-          messageId,
-          id: part.attachmentId,
-        });
-        const buffer = Buffer.from(attachRes.data.data, 'base64');
-
-        let parsed;
-        try {
-          parsed = await parseZomatoReceipt(buffer);
-        } catch (err) {
-          continue; // Not a parseable Zomato receipt — try the next attachment, if any.
-        }
-
-        const dateTotalSoFar = dailyTotals[parsed.date] || 0;
-        if (dateTotalSoFar >= DAILY_REIMBURSEMENT_CAP) {
-          cappedAny = true;
-          continue; // Daily allowance already used up for this date — skip this order.
-        }
-
-        const file = {
-          originalname: part.filename || `${parsed.date}.pdf`,
-          mimetype: 'application/pdf',
-          buffer,
-        };
-        const uploaded = await uploadBillFile(drive, file, parsed.date, parsed.amount);
-        const proofLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
-        await appendRowToCsv(drive, [
-          parsed.date,
-          Number(parsed.amount).toFixed(2),
-          parsed.merchant,
-          proofLink,
-        ]);
-        dailyTotals[parsed.date] = dateTotalSoFar + parsed.amount;
-        summary.synced += 1;
-        processedAny = true;
+      if (!best) {
+        summary.skipped += 1;
+        syncedIds.add(messageId);
+        continue;
       }
 
-      if (!processedAny) {
-        if (cappedAny) summary.capSkipped += 1;
-        else summary.skipped += 1;
-      }
-      syncedIds.add(messageId);
+      candidates.push({ messageId, ...best });
     } catch (err) {
       if (isGoogleAuthError(err)) throw err;
       console.error(`Zomato Gmail sync error for message ${messageId}:`, err.message);
@@ -613,7 +680,82 @@ async function syncZomatoFromGmail({ dateStr, mode }) {
     }
   }
 
+  // Safety net: if the same order's two PDFs ever arrive as separate emails,
+  // dedupe by orderId across messages and keep only the higher-value one.
+  const byOrderId = new Map();
+  const noOrderId = [];
+  for (const candidate of candidates) {
+    const orderId = candidate.parsed.orderId;
+    if (!orderId) {
+      noOrderId.push(candidate);
+      continue;
+    }
+    const existing = byOrderId.get(orderId);
+    if (!existing || candidate.parsed.amount > existing.parsed.amount) {
+      if (existing) syncedIds.add(existing.messageId); // drop the lower-value duplicate
+      byOrderId.set(orderId, candidate);
+    } else {
+      syncedIds.add(candidate.messageId); // drop this lower-value duplicate
+    }
+  }
+  const dedupedCandidates = [...byOrderId.values(), ...noOrderId];
+
+  // Group by order date so the daily cap can be applied per date.
+  const candidatesByDate = {};
+  for (const candidate of dedupedCandidates) {
+    const date = candidate.parsed.date;
+    if (!candidatesByDate[date]) candidatesByDate[date] = [];
+    candidatesByDate[date].push(candidate);
+  }
+
+  // Seed each date's running total from what's already saved, so the cap
+  // accounts for both prior manual submissions and prior syncs.
+  const { byDate: existingByDate } = await readAllBills(drive);
+  const dailyTotals = {};
+  for (const [date, info] of Object.entries(existingByDate)) {
+    dailyTotals[date] = info.total;
+  }
+
+  for (const [date, dateCandidates] of Object.entries(candidatesByDate)) {
+    if (completedDays.has(date)) {
+      for (const candidate of dateCandidates) syncedIds.add(candidate.messageId);
+      summary.capSkipped += dateCandidates.length;
+      continue;
+    }
+
+    // Highest amount first: prefer the biggest orders toward the cap.
+    dateCandidates.sort((a, b) => b.parsed.amount - a.parsed.amount);
+
+    let runningTotal = dailyTotals[date] || 0;
+    let stoppedForCap = false;
+
+    for (const candidate of dateCandidates) {
+      const { parsed, buffer, filename, messageId } = candidate;
+
+      if (stoppedForCap || runningTotal + parsed.amount > DAILY_REIMBURSEMENT_CAP) {
+        stoppedForCap = true;
+        summary.capSkipped += 1;
+        syncedIds.add(messageId); // decided for good — don't re-check next time
+        continue;
+      }
+
+      const file = { originalname: filename, mimetype: 'application/pdf', buffer };
+      const uploaded = await uploadBillFile(drive, file, date, parsed.amount);
+      const proofLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
+      await appendRowToCsv(drive, [date, Number(parsed.amount).toFixed(2), parsed.merchant, proofLink]);
+
+      runningTotal += parsed.amount;
+      summary.synced += 1;
+      syncedIds.add(messageId);
+    }
+
+    if (runningTotal >= DAILY_REIMBURSEMENT_CAP) {
+      completedDays.add(date);
+    }
+  }
+
   saveSyncedMessageIds(syncedIds);
+  saveCompletedDays(completedDays);
   return summary;
 }
 
@@ -623,7 +765,7 @@ app.get('/api/bills', async (_req, res) => {
   try {
     const drive = getDriveClientOrThrow();
     const { bills, byDate } = await readAllBills(drive);
-    res.json({ bills, byDate });
+    res.json({ bills, byDate, dailyCap: DAILY_REIMBURSEMENT_CAP });
   } catch (err) {
     console.error('Bills fetch error:', err);
     if (isGoogleAuthError(err)) return sendAuthRequired(res);
@@ -661,6 +803,27 @@ app.post('/api/submit', upload.single('bill'), async (req, res) => {
     console.error('Submit error:', err);
     if (isGoogleAuthError(err)) return sendAuthRequired(res);
     res.status(500).json({ error: 'Something went wrong while saving your bill. Please try again.' });
+  }
+});
+
+app.post('/api/ocr/upload', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Please attach or photograph an image.' });
+    }
+    if (!req.file.mimetype.startsWith('image/')) {
+      return res.status(400).json({ error: 'Only image files are accepted.' });
+    }
+
+    const drive = getDriveClientOrThrow();
+    const uploaded = await uploadOcrImage(drive, req.file);
+    const proofLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
+
+    res.json({ success: true, message: 'Image saved to Google Drive.', proofLink });
+  } catch (err) {
+    console.error('OCR upload error:', err);
+    if (isGoogleAuthError(err)) return sendAuthRequired(res);
+    res.status(500).json({ error: 'Something went wrong while saving the image. Please try again.' });
   }
 });
 
@@ -723,14 +886,19 @@ app.post('/api/sync-zomato-gmail', async (req, res) => {
     const drive = getDriveClientOrThrow();
     const { byDate } = await readAllBills(drive);
 
-    let message = summary.synced > 0
-      ? `Synced ${summary.synced} new Zomato order${summary.synced === 1 ? '' : 's'} from Gmail.`
-      : 'No new Zomato orders found to sync.';
-    if (summary.capSkipped > 0) {
-      message += ` Skipped ${summary.capSkipped} order${summary.capSkipped === 1 ? '' : 's'} — daily ₹${DAILY_REIMBURSEMENT_CAP} allowance already reached for that date.`;
+    let message;
+    if (summary.dayComplete) {
+      message = `Daily ₹${DAILY_REIMBURSEMENT_CAP} allowance was already reached for ${date} on a previous sync — skipped Gmail check.`;
+    } else {
+      message = summary.synced > 0
+        ? `Synced ${summary.synced} new Zomato order${summary.synced === 1 ? '' : 's'} from Gmail.`
+        : 'No new Zomato orders found to sync.';
+      if (summary.capSkipped > 0) {
+        message += ` Skipped ${summary.capSkipped} order${summary.capSkipped === 1 ? '' : 's'} — daily ₹${DAILY_REIMBURSEMENT_CAP} allowance reached for that date.`;
+      }
     }
 
-    res.json({ success: true, mode: syncMode, summary, byDate, message });
+    res.json({ success: true, mode: syncMode, summary, byDate, message, dailyCap: DAILY_REIMBURSEMENT_CAP });
   } catch (err) {
     console.error('Zomato Gmail sync error:', err);
     if (isGoogleAuthError(err)) return sendAuthRequired(res);
@@ -740,20 +908,22 @@ app.post('/api/sync-zomato-gmail', async (req, res) => {
   }
 });
 
-app.get('/auth/google', (_req, res) => {
-  res.redirect(createAuthUrl());
+app.get('/auth/google', (req, res) => {
+  res.redirect(createAuthUrl(req.query.redirect));
 });
 
 app.get('/auth/google/callback', async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
     if (!code || typeof code !== 'string') {
       return res.status(400).send('Missing OAuth code.');
     }
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
     saveTokens(tokens);
-    res.redirect('/?drive=connected');
+    const redirectTo = safeOAuthRedirect(state);
+    const sep = redirectTo.includes('?') ? '&' : '?';
+    res.redirect(`${redirectTo}${sep}drive=connected`);
   } catch (err) {
     console.error('OAuth callback error:', err);
     res.status(500).send('Could not connect Google account. Check server logs.');
