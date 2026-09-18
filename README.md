@@ -30,8 +30,9 @@ Open the app and pick a tool:
 - **Bill Submission** (`/bill.html`) — fill in date, amount, and merchant,
   attach or photograph the bill, hit submit — the file lands in a Google
   Drive folder you choose, and a running `food_bills.csv` in that same
-  folder gets a new row: `date, amount, merchant, proof` (proof = Drive
-  link).
+  folder gets a new row: `date, amount, merchant, orderId, proof` (orderId =
+  Zomato order ID when known, used to skip duplicates on re-sync; proof =
+  Drive link).
 - **OCR Image Upload** (`/ocr.html`) — upload or photograph an image and
   it's saved straight to a Google Drive folder (same upload-to-Drive
   mechanism as bill submission, no CSV row).
@@ -167,13 +168,24 @@ path and point `GOOGLE_OAUTH_TOKEN_FILE` / `ZOMATO_GMAIL_SYNCED_FILE` at it
     the connected Gmail account for Zomato order emails with a PDF receipt in
     that date's day or month, parses each one with the same Zomato parser,
     and saves any new ones to Drive + the CSV exactly like a manual Zomato
-    upload. Already-processed emails are tracked in a local
-    `zomato-gmail-synced.json` file so re-running a sync never double-saves.
+    upload. A Zomato order email can carry an Order Summary PDF (what was
+    actually paid, after any personal coupon), a restaurant Tax Invoice PDF
+    (the food bill's real value — preferred for reimbursement when present),
+    and a platform-fee-only invoice (never reimbursable, skipped). Already-
+    processed emails are tracked in a local `zomato-gmail-synced.json` file
+    so re-running a sync never re-parses them; as a second safety net, an
+    order whose `orderId` is already recorded for that date in the CSV is
+    also skipped, even if the message-tracking file was reset.
     Adjust which emails match via the `ZOMATO_GMAIL_QUERY` env var (default:
     `(from:zomato.com OR subject:zomato) has:attachment filename:pdf`).
     Respects a per-day reimbursement cap: once a date's already-saved bills
     (manual + synced) total `DAILY_REIMBURSEMENT_CAP` (default `300`), any
     further Zomato orders found for that same date are skipped.
+  - `POST /api/clear-bills` wipes every row from `food_bills.csv` (keeping
+    just the header) and resets `zomato-gmail-synced.json` and
+    `zomato-completed-days.json`, so a fresh Gmail sync re-evaluates
+    everything from scratch. Triggered by the "Clear all bills" link on
+    `/bill.html`, which asks for confirmation first — this is not reversible.
   - `GET /auth/google` (optionally `?redirect=/bill.html` or `/ocr.html`)
     starts the OAuth flow and, once connected, sends you back to that page
     (falls back to `/`). The redirect target is checked against a fixed

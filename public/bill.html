@@ -494,6 +494,25 @@
   .drive-status .connect-btn:hover { background: #fff0ef; }
   .drive-status.connected .connect-btn { display: none; }
 
+  .danger-zone {
+    margin-top: 14px;
+    text-align: center;
+  }
+  .clear-all-btn {
+    border: none;
+    background: none;
+    color: var(--ink-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px;
+  }
+  .clear-all-btn:hover { color: var(--stamp-red); }
+  .clear-all-btn:disabled { opacity: 0.6; cursor: wait; }
+
   @media (prefers-reduced-motion: reduce) {
     .stamp.show { animation: none; }
   }
@@ -583,6 +602,10 @@
     </div>
     <a class="connect-btn" id="driveConnectBtn" href="/auth/google?redirect=/bill.html">Connect</a>
   </div>
+
+  <div class="danger-zone">
+    <button type="button" class="clear-all-btn" id="clearAllBtn">Clear all bills (reset CSV)</button>
+  </div>
 </form>
 
 <script>
@@ -615,6 +638,7 @@
   const syncDateBtn = document.getElementById('syncDateBtn');
   const syncMonthBtn = document.getElementById('syncMonthBtn');
   const syncStatus = document.getElementById('syncStatus');
+  const clearAllBtn = document.getElementById('clearAllBtn');
 
   let selectedFile = null;
   let billsByDate = {};
@@ -1017,6 +1041,42 @@
 
   syncDateBtn.addEventListener('click', () => runZomatoGmailSync('date'));
   syncMonthBtn.addEventListener('click', () => runZomatoGmailSync('month'));
+
+  // --- Clear all bills: wipes the CSV and resets Zomato sync history ---
+  clearAllBtn.addEventListener('click', async () => {
+    const confirmed = window.confirm(
+      'This will permanently delete ALL recorded bills from the CSV and reset Zomato Gmail sync history, so a future sync re-checks every order from scratch.\n\nThis cannot be undone. Continue?'
+    );
+    if (!confirmed) return;
+
+    clearAllBtn.disabled = true;
+    clearAllBtn.textContent = 'Clearing…';
+    syncStatus.className = 'sync-status';
+    syncStatus.textContent = 'Clearing all bills…';
+
+    try {
+      const res = await fetch('/api/clear-bills', { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401 && data.authUrl) {
+          markAuthRequired('Google auth connection required');
+          throw new Error('Google account is not connected.');
+        }
+        throw new Error(data.error || 'Could not clear bills.');
+      }
+
+      applyByDate(data.byDate || {});
+      syncStatus.className = 'sync-status ok';
+      syncStatus.textContent = data.message || 'All bills cleared.';
+    } catch (err) {
+      syncStatus.className = 'sync-status error';
+      syncStatus.textContent = err.message || 'Could not clear bills.';
+    } finally {
+      clearAllBtn.disabled = false;
+      clearAllBtn.textContent = 'Clear all bills (reset CSV)';
+    }
+  });
 
   // --- Submit manual bill ---
   form.addEventListener('submit', async (e) => {

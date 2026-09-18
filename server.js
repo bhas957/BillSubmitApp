@@ -406,13 +406,23 @@ function parseCsvRows(text) {
     }
     parts.push(current);
 
-    const [date, amount, merchant = '', proof = ''] = parts;
+    // Rows written before the orderId column existed have only 4 fields
+    // (date,amount,merchant,proof) — keep reading those correctly instead of
+    // misreading their proof link as an orderId.
+    let date, amount, merchant, orderId, proof;
+    if (parts.length >= 5) {
+      [date, amount, merchant = '', orderId = '', proof = ''] = parts;
+    } else {
+      [date, amount, merchant = '', proof = ''] = parts;
+      orderId = '';
+    }
     const amountNum = Number(amount);
     if (!date || !Number.isFinite(amountNum)) continue;
     rows.push({
       date: date.trim(),
       amount: amountNum,
       merchant: merchant.trim(),
+      orderId: orderId.trim(),
       proof: proof.trim(),
     });
   }
@@ -445,8 +455,20 @@ async function readAllBills(drive) {
   return { bills, byDate: summarizeBillsByDate(bills) };
 }
 
+// Finds a previously recorded bill for the same date with the same Zomato
+// orderId, so a re-run of the Gmail sync (or a re-upload of the same
+// receipt) doesn't create a duplicate row.
+function findExistingBillByOrderId(byDate, date, orderId) {
+  if (!orderId) return null;
+  const info = byDate[date];
+  if (!info) return null;
+  return info.bills.find((b) => b.orderId && b.orderId === orderId) || null;
+}
+
+const CSV_HEADER = 'date,amount,merchant,orderId,proof\n';
+const OLD_CSV_HEADER_RE = /^date\s*,\s*amount\s*,\s*merchant\s*,\s*proof\s*$/i;
+
 async function appendRowToCsv(drive, rowValues) {
-  const header = 'date,amount,merchant,proof\n';
   const row = rowValues.map(csvEscape).join(',') + '\n';
 
   const existing = await findCsvFile(drive);
@@ -461,7 +483,7 @@ async function appendRowToCsv(drive, rowValues) {
       },
       media: {
         mimeType: 'text/csv',
-        body: bufferToStream(Buffer.from(header + row, 'utf8')),
+        body: bufferToStream(Buffer.from(CSV_HEADER + row, 'utf8')),
       },
       fields: 'id',
     });
@@ -473,16 +495,38 @@ async function appendRowToCsv(drive, rowValues) {
   if (typeof currentText !== 'string') {
     currentText = String(currentText || '');
   }
+
+  // Upgrade a pre-orderId header in place; existing data rows stay 4-field
+  // and are still read correctly by parseCsvRows.
+  const lines = currentText.split(/\r?\n/);
+  if (lines.length && OLD_CSV_HEADER_RE.test(lines[0].trim())) {
+    lines[0] = CSV_HEADER.trim();
+    currentText = lines.join('\n');
+  }
+
   if (!currentText.endsWith('\n') && currentText.length > 0) {
     currentText += '\n';
   }
-  const updatedText = currentText.length > 0 ? currentText + row : header + row;
+  const updatedText = currentText.length > 0 ? currentText + row : CSV_HEADER + row;
 
   await drive.files.update({
     fileId: existing.id,
     media: {
       mimeType: 'text/csv',
       body: bufferToStream(Buffer.from(updatedText, 'utf8')),
+    },
+  });
+}
+
+// Overwrites the CSV with just the header, wiping every recorded bill.
+async function clearAllBills(drive) {
+  const existing = await findCsvFile(drive);
+  if (!existing) return;
+  await drive.files.update({
+    fileId: existing.id,
+    media: {
+      mimeType: 'text/csv',
+      body: bufferToStream(Buffer.from(CSV_HEADER, 'utf8')),
     },
   });
 }
@@ -495,6 +539,13 @@ function pad2(n) {
 
 function gmailDateStr(d) {
   return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())}`;
+}
+
+// Company policy: weekend food orders aren't reimbursable.
+function isWeekend(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const day = new Date(y, m - 1, d).getDay(); // 0 = Sunday, 6 = Saturday
+  return day === 0 || day === 6;
 }
 
 function buildGmailQueryDateRange(dateStr, mode) {
@@ -579,10 +630,14 @@ async function listGmailMessageIds(gmail, query) {
   return ids;
 }
 
-// For a single Gmail message, download every PDF attachment, parse each as a
-// Zomato receipt, and keep only the highest-value one — Zomato sends both an
-// "Invoice" PDF and an "Order ID" PDF per order, and we only want to upload
-// and record one bill per real-world order.
+// For a single Gmail message, download every PDF attachment and parse each
+// as a Zomato document. Zomato sends up to three PDFs per order: the "Order
+// Summary" (what was actually paid, i.e. after any personal coupon/Gold
+// discount), the restaurant's "Tax Invoice" (the food bill's real value,
+// independent of personal coupons — this is what should be reimbursed), and
+// a platform-fee-only invoice (not reimbursable, and parseZomatoReceipt
+// already rejects it). We keep the restaurant Tax Invoice whenever one is
+// present; otherwise we fall back to the Order Summary.
 async function parseBestAttachmentForMessage(gmail, messageId, pdfParts) {
   let best = null;
   for (const part of pdfParts) {
@@ -597,15 +652,26 @@ async function parseBestAttachmentForMessage(gmail, messageId, pdfParts) {
     try {
       parsed = await parseZomatoReceipt(buffer);
     } catch (err) {
-      continue; // Not a parseable Zomato receipt — try the next attachment, if any.
+      continue; // Not a parseable/reimbursable Zomato document — try the next attachment, if any.
     }
 
-    if (!best || parsed.amount > best.parsed.amount) {
-      best = {
-        parsed,
-        buffer,
-        filename: part.filename || `${parsed.date}.pdf`,
-      };
+    const candidate = {
+      parsed,
+      buffer,
+      filename: part.filename || `${parsed.date}.pdf`,
+    };
+
+    if (!best) {
+      best = candidate;
+      continue;
+    }
+
+    const bestIsInvoice = best.parsed.documentType === 'invoice';
+    const candidateIsInvoice = candidate.parsed.documentType === 'invoice';
+    if (candidateIsInvoice && !bestIsInvoice) {
+      best = candidate;
+    } else if (candidateIsInvoice === bestIsInvoice && candidate.parsed.amount > best.parsed.amount) {
+      best = candidate;
     }
   }
   return best;
@@ -628,6 +694,9 @@ async function syncZomatoFromGmail({ dateStr, mode }) {
       alreadySynced: 0,
       skipped: 0,
       capSkipped: 0,
+      capped: 0,
+      duplicateSkipped: 0,
+      weekendSkipped: 0,
       errors: 0,
       dayComplete: true,
     };
@@ -650,6 +719,9 @@ async function syncZomatoFromGmail({ dateStr, mode }) {
     alreadySynced: 0,
     skipped: 0,
     capSkipped: 0,
+    capped: 0,
+    duplicateSkipped: 0,
+    weekendSkipped: 0,
     errors: 0,
   };
 
@@ -668,6 +740,12 @@ async function syncZomatoFromGmail({ dateStr, mode }) {
 
       if (!best) {
         summary.skipped += 1;
+        syncedIds.add(messageId);
+        continue;
+      }
+
+      if (isWeekend(best.parsed.date)) {
+        summary.weekendSkipped = (summary.weekendSkipped || 0) + 1;
         syncedIds.add(messageId);
         continue;
       }
@@ -732,21 +810,42 @@ async function syncZomatoFromGmail({ dateStr, mode }) {
     for (const candidate of dateCandidates) {
       const { parsed, buffer, filename, messageId } = candidate;
 
-      if (stoppedForCap || runningTotal + parsed.amount > DAILY_REIMBURSEMENT_CAP) {
+      // Already recorded this order for this date in a previous sync —
+      // skip it instead of adding a duplicate row.
+      if (findExistingBillByOrderId(existingByDate, date, parsed.orderId)) {
+        summary.duplicateSkipped = (summary.duplicateSkipped || 0) + 1;
+        syncedIds.add(messageId);
+        continue;
+      }
+
+      const remaining = DAILY_REIMBURSEMENT_CAP - runningTotal;
+      if (stoppedForCap || remaining <= 0) {
         stoppedForCap = true;
         summary.capSkipped += 1;
         syncedIds.add(messageId); // decided for good — don't re-check next time
         continue;
       }
 
+      // If this order alone would push the date over the cap, still record
+      // it — capped at whatever allowance remains — instead of dropping the
+      // bill entirely. The uploaded file/filename keeps the real order
+      // amount; only the claimed CSV amount is capped.
+      const amountToRecord = Math.min(parsed.amount, remaining);
+      const wasCapped = amountToRecord < parsed.amount;
+
       const file = { originalname: filename, mimetype: 'application/pdf', buffer };
       const uploaded = await uploadBillFile(drive, file, date, parsed.amount);
       const proofLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
-      await appendRowToCsv(drive, [date, Number(parsed.amount).toFixed(2), parsed.merchant, proofLink]);
+      await appendRowToCsv(drive, [date, Number(amountToRecord).toFixed(2), parsed.merchant, parsed.orderId || '', proofLink]);
 
-      runningTotal += parsed.amount;
+      runningTotal += amountToRecord;
       summary.synced += 1;
+      if (wasCapped) summary.capped = (summary.capped || 0) + 1;
       syncedIds.add(messageId);
+
+      if (runningTotal >= DAILY_REIMBURSEMENT_CAP) {
+        stoppedForCap = true;
+      }
     }
 
     if (runningTotal >= DAILY_REIMBURSEMENT_CAP) {
@@ -773,6 +872,27 @@ app.get('/api/bills', async (_req, res) => {
   }
 });
 
+app.post('/api/clear-bills', async (_req, res) => {
+  try {
+    const drive = getDriveClientOrThrow();
+    await clearAllBills(drive);
+    // Reset local Zomato sync trackers too, so a fresh sync re-evaluates
+    // every message and date instead of thinking they're already handled.
+    saveSyncedMessageIds(new Set());
+    saveCompletedDays(new Set());
+
+    res.json({
+      success: true,
+      message: 'All bills cleared. You can start fresh.',
+      byDate: {},
+    });
+  } catch (err) {
+    console.error('Clear bills error:', err);
+    if (isGoogleAuthError(err)) return sendAuthRequired(res);
+    res.status(500).json({ error: 'Could not clear bills. Please try again.' });
+  }
+});
+
 app.post('/api/submit', upload.single('bill'), async (req, res) => {
   try {
     const { date, amount, merchant } = req.body;
@@ -789,7 +909,7 @@ app.post('/api/submit', upload.single('bill'), async (req, res) => {
     const uploaded = await uploadBillFile(drive, req.file, date, amount);
     const proofLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
 
-    await appendRowToCsv(drive, [date, Number(amount).toFixed(2), merchant || '', proofLink]);
+    await appendRowToCsv(drive, [date, Number(amount).toFixed(2), merchant || '', '', proofLink]);
 
     const { byDate } = await readAllBills(drive);
 
@@ -843,6 +963,20 @@ app.post('/api/submit-zomato', upload.single('bill'), async (req, res) => {
     const parsed = await parseZomatoReceipt(req.file.buffer);
     const drive = getDriveClientOrThrow();
 
+    const { byDate: existingByDate } = await readAllBills(drive);
+    const duplicate = findExistingBillByOrderId(existingByDate, parsed.date, parsed.orderId);
+    if (duplicate) {
+      return res.json({
+        success: true,
+        duplicate: true,
+        message: `This Zomato order (ID ${parsed.orderId}) was already recorded for ${parsed.date} — skipped duplicate.`,
+        parsed,
+        proofLink: duplicate.proof,
+        byDate: existingByDate,
+        daySummary: existingByDate[parsed.date] || null,
+      });
+    }
+
     const uploaded = await uploadBillFile(drive, req.file, parsed.date, parsed.amount);
     const proofLink = uploaded.webViewLink || `https://drive.google.com/file/d/${uploaded.id}/view`;
 
@@ -850,6 +984,7 @@ app.post('/api/submit-zomato', upload.single('bill'), async (req, res) => {
       parsed.date,
       Number(parsed.amount).toFixed(2),
       parsed.merchant,
+      parsed.orderId || '',
       proofLink,
     ]);
 
@@ -867,7 +1002,7 @@ app.post('/api/submit-zomato', upload.single('bill'), async (req, res) => {
   } catch (err) {
     console.error('Zomato submit error:', err);
     if (isGoogleAuthError(err)) return sendAuthRequired(res);
-    if (err.code === 'NOT_ZOMATO' || err.code === 'PARSE_FAILED') {
+    if (err.code === 'NOT_ZOMATO' || err.code === 'PARSE_FAILED' || err.code === 'NOT_REIMBURSABLE') {
       return res.status(400).json({ error: err.message });
     }
     res.status(500).json({ error: 'Could not parse or save the Zomato receipt. Please try again.' });
@@ -893,8 +1028,17 @@ app.post('/api/sync-zomato-gmail', async (req, res) => {
       message = summary.synced > 0
         ? `Synced ${summary.synced} new Zomato order${summary.synced === 1 ? '' : 's'} from Gmail.`
         : 'No new Zomato orders found to sync.';
+      if (summary.capped > 0) {
+        message += ` ${summary.capped} order${summary.capped === 1 ? '' : 's'} capped at ₹${DAILY_REIMBURSEMENT_CAP} (actual amount was higher).`;
+      }
       if (summary.capSkipped > 0) {
         message += ` Skipped ${summary.capSkipped} order${summary.capSkipped === 1 ? '' : 's'} — daily ₹${DAILY_REIMBURSEMENT_CAP} allowance reached for that date.`;
+      }
+      if (summary.duplicateSkipped > 0) {
+        message += ` Skipped ${summary.duplicateSkipped} order${summary.duplicateSkipped === 1 ? '' : 's'} already recorded from a previous sync.`;
+      }
+      if (summary.weekendSkipped > 0) {
+        message += ` Skipped ${summary.weekendSkipped} order${summary.weekendSkipped === 1 ? '' : 's'} placed on a weekend (not reimbursable).`;
       }
     }
 
