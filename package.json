@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "ocr:fixtures": "node dev-tools/ocr-robustness-fixtures/src/index.js"
+    "ocr:fixtures": "node dev-tools/ocr-robustness-fixtures/src/index.js",
+    "bible:fetch": "node dev-tools/bible/fetch-irv.js"
   },
   "dependencies": {
     "csv-parse": "^5.5.6",

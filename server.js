@@ -44,6 +44,7 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+app.use('/api/bible', require('./bibleRoutes'));
 
 // Keep uploads in memory; bills are small images/PDFs, not huge files.
 const upload = multer({

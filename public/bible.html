@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="te" data-theme="paper">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#f4ecd8" />
+<title>Telugu Bible</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Mandali&family=Noto+Sans+Telugu:wght@400;500;600&family=Noto+Serif+Telugu:wght@400;600&family=Ramaraja&display=swap" rel="stylesheet">
+<style>
+  /* ---- Themes: low-contrast, warm, no pure white/black (Kindle-like) ---- */
+  :root, [data-theme="paper"] {
+    --bg: #f4ecd8; --surface: #efe5cc; --surface-2: #e7dbbd; --ink: #3b3226; --ink-soft: #6e614c;
+    --line: #dccfae; --accent: #8a5a2b; --accent-soft: rgba(138, 90, 43, 0.12);
+    --done: #4f8a4a; --behind: #b4533f; --today: #c99a2e; --hl-mix: 62%;
+    --shadow: 0 18px 40px -24px rgba(60, 45, 20, 0.55);
+  }
+  [data-theme="sepia"] {
+    --bg: #e9d9b6; --surface: #e2cfa6; --surface-2: #d8c294; --ink: #4a3a24; --ink-soft: #67543a;
+    --line: #cdb586; --accent: #7b4a1e; --accent-soft: rgba(123, 74, 30, 0.13);
+    --done: #4b7f3f; --behind: #a84a33; --today: #b8862a; --hl-mix: 60%;
+  }
+  [data-theme="white"] {
+    --bg: #fbfaf6; --surface: #f3f1ea; --surface-2: #e9e6dc; --ink: #262420; --ink-soft: #6b665b;
+    --line: #dedad0; --accent: #3b4fb5; --accent-soft: rgba(59, 79, 181, 0.1);
+    --done: #2f8a4a; --behind: #c0442f; --today: #c99a2e; --hl-mix: 60%;
+    --shadow: 0 18px 40px -24px rgba(30, 28, 22, 0.45);
+  }
+  [data-theme="night"] {
+    --bg: #121212; --surface: #1b1a18; --surface-2: #262420; --ink: #c8c0b0; --ink-soft: #8a8274;
+    --line: #2e2b26; --accent: #d1a467; --accent-soft: rgba(209, 164, 103, 0.14);
+    --done: #4f8a52; --behind: #a5523f; --today: #b8903a; --hl-mix: 32%;
+    --shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.9);
+  }
+  :root {
+    --fs: 21px; --lh: 1.9;
+    --reader-font: 'Noto Serif Telugu', serif;
+    --ui-font: 'Inter', 'Noto Sans Telugu', system-ui, sans-serif;
+    --barh: 96px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--bg); }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink); font-family: var(--ui-font);
+    transition: background .2s, color .2s;
+  }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+  small, .soft { color: var(--ink-soft); }
+
+  /* brightness dimmer sits above everything but ignores clicks */
+  #dim { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 100; }
+
+  /* ---- Top bar ---- */
+  #bar {
+    position: sticky; top: 0; z-index: 20; background: var(--bg);
+    border-bottom: 1px solid var(--line); transition: transform .25s ease;
+  }
+  body[data-view="read"] #bar { position: fixed; left: 0; right: 0; }
+  body.focus #bar { transform: translateY(-100%); }
+  .bar-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px 2px; max-width: 1100px; margin: 0 auto; }
+  .icon-btn {
+    border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; text-decoration: none;
+    font-size: 17px; line-height: 1; color: var(--ink-soft);
+  }
+  .icon-btn:hover { background: var(--accent-soft); color: var(--accent); }
+  .bar-title { flex: 1; font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabs { display: flex; gap: 2px; overflow-x: auto; padding: 0 8px 6px; max-width: 1100px; margin: 0 auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs a {
+    flex: none; text-decoration: none; padding: 6px 12px; border-radius: 999px; font-size: 14px;
+    color: var(--ink-soft); display: flex; flex-direction: column; align-items: center; line-height: 1.25;
+  }
+  .tabs a small { font-size: 10px; letter-spacing: .03em; }
+  .tabs a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .tabs a.active small { color: var(--accent); }
+
+  /* ---- Generic page layout ---- */
+  main { max-width: 860px; margin: 0 auto; padding: 18px 16px 120px; }
+  h2.page-h { font-size: 22px; margin: 6px 0 14px; font-weight: 600; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 14px;
+  }
+  .card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; display: flex; align-items: baseline; gap: 8px; }
+  .card h3 small { font-weight: 400; font-size: 12px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-2 .card { margin-bottom: 0; }
+  @media (max-width: 680px) { .grid-2 { grid-template-columns: 1fr; } }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none;
+    border: 1px solid var(--line); background: var(--surface-2); padding: 9px 14px; border-radius: 10px;
+    font-size: 14px; line-height: 1.3;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+  .btn.small { padding: 5px 10px; font-size: 13px; border-radius: 8px; }
+  .btn.ghost { background: transparent; }
+  .btn[disabled] { opacity: .5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .spacer { flex: 1; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px;
+    font-size: 13px; text-decoration: none; border: 1px solid var(--line); background: var(--bg);
+  }
+  .chip.st-done { background: var(--done); border-color: var(--done); color: #fff; }
+  .chip.st-behind { background: var(--behind); border-color: var(--behind); color: #fff; }
+  .chip.st-today { border: 2px solid var(--today); }
+  .progress { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+  .progress > span { display: block; height: 100%; background: var(--done); border-radius: 99px; }
+  .big-num { font-size: 30px; font-weight: 600; line-height: 1.1; }
+  input[type="text"], input[type="date"], textarea, select {
+    font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 11px; width: 100%;
+  }
+  textarea { min-height: 70px; resize: vertical; font-family: 'Noto Sans Telugu', var(--ui-font); }
+  label.field { display: block; font-size: 13px; color: var(--ink-soft); margin: 10px 0 4px; }
+  .verse-text { font-family: var(--reader-font); font-size: calc(var(--fs) * .85); line-height: 1.75; }
+  .attribution { font-size: 11.5px; color: var(--ink-soft); text-align: center; margin: 28px auto 0; max-width: 560px; line-height: 1.5; }
+  .empty { text-align: center; color: var(--ink-soft); padding: 30px 10px; }
+
+  /* ---- Home ---- */
+  .hello { margin: 4px 0 16px; }
+  .hello .day { font-size: 13px; color: var(--ink-soft); letter-spacing: .04em; text-transform: uppercase; }
+  .hello .title { font-size: 24px; font-weight: 600; margin-top: 2px; }
+  .votd .verse-text { font-size: calc(var(--fs) * .95); margin: 4px 0 8px; }
+  .week-dots { display: flex; gap: 6px; margin-top: 10px; }
+  .week-dots span {
+    width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 11px;
+    background: var(--surface-2); color: var(--ink-soft);
+  }
+  .week-dots span.read { background: var(--done); color: #fff; }
+  .week-dots span.grace { background: transparent; border: 2px dashed var(--today); }
+  .week-dots span.now { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .feel-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .feel-chips button { border: 1px solid var(--line); background: var(--bg); border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+  .feel-chips button:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---- Book index ---- */
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--ink-soft); margin-bottom: 12px; }
+  .legend i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 5px; background: var(--surface-2); }
+  .legend i.done { background: var(--done); } .legend i.behind { background: var(--behind); }
+  .legend i.today { background: transparent; border: 2px solid var(--today); }
+  .testament-h { font-size: 15px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); margin: 24px 0 10px; }
+  .book { padding: 12px 14px; }
+  .book-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .book-head b { font-size: 16px; }
+  .book-head .pct { margin-left: auto; font-size: 12px; color: var(--ink-soft); }
+  .cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 5px; }
+  .cell {
+    height: 34px; display: grid; place-items: center; border-radius: 7px; font-size: 13px; text-decoration: none;
+    background: var(--surface-2); color: var(--ink-soft); border: 2px solid transparent;
+  }
+  .cell:hover { border-color: var(--accent); }
+  .cell.done { background: var(--done); color: #fff; }
+  .cell.behind { background: var(--behind); color: #fff; }
+  .cell.today { border-color: var(--today); color: var(--ink); font-weight: 600; }
+
+  /* ---- Reader ---- */
+  body[data-view="read"] main { max-width: none; padding: var(--barh) 0 0; }
+  .reader-head {
+    display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 12px 0;
+    max-width: 760px; margin: 0 auto; color: var(--ink-soft); font-size: 14px;
+  }
+  .reader-head a { text-decoration: none; padding: 4px 10px; border-radius: 8px; }
+  .reader-head a:hover { background: var(--accent-soft); }
+  #text {
+    font-family: var(--reader-font); font-size: var(--fs); line-height: var(--lh);
+    max-width: 38em; margin: 0 auto; padding: 8px 22px 160px; position: relative;
+    user-select: none; -webkit-user-select: none; hyphens: none; overflow-wrap: break-word;
+  }
+  .chap-h { font-family: var(--reader-font); font-weight: 600; text-align: center; margin: 18px 0 22px; font-size: 1.15em; color: var(--ink-soft); }
+  .chap-h span { display: block; font-size: 2.2em; color: var(--ink); line-height: 1.2; }
+  .verses { margin: 0; }
+  .v { cursor: pointer; border-radius: 4px; padding: 1px 0; transition: background .15s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .v sup { font-family: var(--ui-font); font-size: .55em; color: var(--ink-soft); margin: 0 .25em 0 .15em; font-weight: 600; }
+  .v.hl { background: color-mix(in srgb, var(--hl) var(--hl-mix), transparent); }
+  .v.has-note sup::after { content: '✎'; margin-left: 2px; color: var(--accent); }
+  .v.sel { background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
+  .v.hl.sel { box-shadow: inset 0 -3px 0 var(--accent); }
+  .v.flash { animation: flash 2.4s ease; }
+  @keyframes flash { 0%, 40% { background: color-mix(in srgb, var(--today) 55%, transparent); } }
+  body.verse-lines .v { display: block; margin-bottom: .35em; }
+  .chap-end {
+    font-family: var(--ui-font); font-size: 15px; text-align: center; margin: 36px 0 10px;
+    padding: 20px 10px; border-top: 1px solid var(--line); break-inside: avoid;
+  }
+  .chap-end .btn.primary { font-size: 16px; padding: 12px 20px; }
+  .chap-end .meta { font-size: 12.5px; color: var(--ink-soft); margin-top: 12px; line-height: 1.6; }
+  .chap-end .row { justify-content: center; margin-top: 12px; }
+
+  /* paged (Kindle) mode: CSS columns, one column per screen, slide with transform */
+  .reader.paged .page-wrap { overflow: hidden; max-width: 760px; margin: 0 auto; }
+  .reader.paged #text { max-width: none; column-fill: auto; transition: transform .28s ease; padding-bottom: 0; }
+  .page-nav { display: none; }
+  .reader.paged .page-nav {
+    display: flex; align-items: center; justify-content: center; gap: 18px; height: 48px;
+    font-size: 12.5px; color: var(--ink-soft);
+  }
+  .page-nav button { border: 0; background: transparent; font-size: 22px; color: var(--ink-soft); padding: 4px 16px; border-radius: 8px; }
+  .page-nav button:hover { background: var(--accent-soft); }
+
+  /* ---- Selection sheet ---- */
+  .sheet {
+    position: fixed; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 30;
+    width: min(680px, 100%); background: var(--surface); border: 1px solid var(--line); border-bottom: 0;
+    border-radius: 18px 18px 0 0; box-shadow: 0 -12px 40px -18px rgba(0,0,0,.5); padding: 12px 14px 16px;
+    font-family: var(--ui-font); max-height: 70vh; overflow-y: auto;
+  }
+  .sheet-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .sheet-head b { font-size: 15px; }
+  .swatches { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 10px; scrollbar-width: none; }
+  .swatches::-webkit-scrollbar, .color-tabs::-webkit-scrollbar { display: none; }
+  .sw {
+    flex: none; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--bg);
+    border-radius: 999px; padding: 5px 11px 5px 6px; font-size: 12.5px; white-space: nowrap;
+  }
+  .sw .dot { width: 20px; height: 20px; border-radius: 50%; background: var(--c); flex: none; }
+  .sw.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .ai-main { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .ai-main button {
+    border: 0; background: var(--accent); color: var(--bg); border-radius: 12px; padding: 11px 10px;
+    font-weight: 600; font-size: 14.5px; line-height: 1.3; font-family: 'Noto Sans Telugu', var(--ui-font);
+  }
+  .ai-main button small { display: block; font-weight: 400; font-size: 11.5px; color: inherit; opacity: .85; }
+  .more-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .more-row button { border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 7px 10px; font-size: 13px; }
+  .more-row button:hover { border-color: var(--accent); }
+
+  /* ---- AI drawer ---- */
+  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 39; }
+  .drawer {
+    position: fixed; z-index: 40; background: var(--bg); border: 1px solid var(--line);
+    display: flex; flex-direction: column; box-shadow: var(--shadow);
+    right: 0; top: 0; bottom: 0; width: min(460px, 100%);
+  }
+  @media (max-width: 899px) {
+    .drawer { top: auto; left: 0; width: 100%; height: 85vh; border-radius: 18px 18px 0 0; }
+  }
+  .drawer-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+  .drawer-head .row { flex-wrap: nowrap; }
+  .drawer-head b { font-size: 16px; }
+  .drawer-ref { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; padding: 5px 12px; font-size: 12.5px; }
+  .seg button.on { background: var(--accent); color: var(--bg); }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 14px 18px 24px; font-family: 'Noto Sans Telugu', var(--ui-font); font-size: 16px; line-height: 1.75; }
+  .drawer-body h3 { font-size: 15.5px; margin: 18px 0 4px; color: var(--accent); }
+  .drawer-body h3:first-child { margin-top: 0; }
+  .drawer-body p { margin: 0 0 10px; }
+  .drawer-body ul, .drawer-body ol { margin: 0 0 10px; padding-left: 22px; }
+  .drawer-foot { padding: 10px 16px 14px; border-top: 1px solid var(--line); }
+  .ref-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+  .ref-card a { font-weight: 600; text-decoration: none; color: var(--accent); }
+  .ref-card .why { font-size: 14px; color: var(--ink-soft); margin: 2px 0 6px; line-height: 1.55; }
+  .thinking { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); padding: 20px 0; }
+  .thinking i { width: 18px; height: 18px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .err { color: var(--behind); }
+
+  /* ---- Settings panel ---- */
+  .panel {
+    position: fixed; z-index: 35; top: 8px; right: 8px; width: min(380px, calc(100% - 16px));
+    max-height: calc(100vh - 16px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 16px; box-shadow: var(--shadow); padding: 14px 16px 18px;
+  }
+  .panel h4 { margin: 14px 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); }
+  .themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .themes button { border: 2px solid var(--line); border-radius: 10px; padding: 10px 4px; font-size: 12px; font-family: 'Noto Serif Telugu', serif; }
+  .themes button.on { border-color: var(--accent); }
+  .opt-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .opt-row button { flex: 1; border: 1px solid var(--line); background: var(--bg); border-radius: 9px; padding: 7px 6px; font-size: 13px; }
+  .opt-row button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .slider { display: flex; align-items: center; gap: 10px; }
+  .slider input { flex: 1; accent-color: var(--accent); }
+  .slider span { min-width: 34px; text-align: right; font-size: 13px; color: var(--ink-soft); }
+
+  /* ---- Highlights ---- */
+  .color-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: none; }
+  .color-tabs a { flex: none; text-decoration: none; }
+  .color-tabs a.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .hl-item { display: flex; gap: 12px; }
+  .hl-item .bar { width: 6px; border-radius: 6px; background: var(--c); flex: none; }
+  .hl-item .body { flex: 1; min-width: 0; }
+  .hl-item .ref { font-weight: 600; text-decoration: none; color: var(--accent); }
+  .hl-item .note { font-size: 14px; background: var(--bg); border-radius: 8px; padding: 6px 10px; margin-top: 6px; }
+
+  /* ---- Plan ---- */
+  .month-h { position: sticky; top: var(--barh); background: var(--bg); padding: 10px 0 6px; font-weight: 600; z-index: 2; font-size: 14px; color: var(--ink-soft); }
+  .plan-day { display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .plan-day.is-today { background: var(--accent-soft); border-radius: 10px; }
+  .plan-day .d { font-size: 13px; line-height: 1.35; }
+  .plan-day .d b { display: block; font-size: 14px; }
+  .plan-day .chs { display: flex; flex-wrap: wrap; gap: 5px; }
+  @media (max-width: 560px) { .plan-day { grid-template-columns: 70px 1fr; } .plan-day .act { grid-column: 2; } }
+
+  /* ---- Journal ---- */
+  .moods { display: flex; gap: 6px; flex-wrap: wrap; }
+  .moods button { font-size: 22px; border: 2px solid transparent; background: var(--bg); border-radius: 12px; padding: 4px 8px; }
+  .moods button.on { border-color: var(--accent); }
+  .j-q { font-size: 13px; color: var(--ink-soft); margin-top: 10px; }
+  .j-a { white-space: pre-wrap; margin-top: 2px; }
+  details.saved { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+  details.saved summary { cursor: pointer; font-size: 13.5px; color: var(--accent); }
+  details.saved .drawer-body { padding: 8px 0 0; font-size: 15px; }
+
+  /* ---- Memorize ---- */
+  .flash-card { text-align: center; padding: 28px 20px; }
+  .flash-card .ref { font-size: 22px; font-weight: 600; margin-bottom: 10px; }
+  .flash-card .verse-text { font-size: var(--fs); text-align: left; margin: 16px 0; }
+  .boxes { display: inline-flex; gap: 3px; }
+  .boxes i { width: 8px; height: 8px; border-radius: 50%; background: var(--surface-2); }
+  .boxes i.on { background: var(--done); }
+
+  /* ---- Modal, toast, eye rest ---- */
+  .modal { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.4); display: grid; place-items: center; padding: 16px; }
+  .modal-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; width: min(520px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 18px 20px; box-shadow: var(--shadow); }
+  .modal-card h3 { margin: 0 0 6px; font-size: 18px; }
+  .modal-card .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 30px); opacity: 0; z-index: 60;
+    background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px;
+    transition: all .25s ease; pointer-events: none; max-width: calc(100% - 32px); text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  body.sheet-open #toast { bottom: 240px; }
+  body.sheet-open #text { padding-bottom: 340px; }
+  body.sheet-open .reader.paged #text { padding-bottom: 0; }
+</style>
+</head>
+<body data-view="home">
+<div id="dim"></div>
+
+<header id="bar">
+  <div class="bar-row">
+    <a class="icon-btn" href="/" aria-label="All tools" title="All tools">&larr;</a>
+    <div class="bar-title" id="barTitle">తెలుగు బైబిల్ <small>· IRV</small></div>
+    <button class="icon-btn" id="btnSettings" aria-label="Reading settings" title="Reading settings"><b>Aa</b></button>
+  </div>
+  <nav class="tabs" id="tabs">
+    <a href="#home" data-tab="home">ఈరోజు<small>Today</small></a>
+    <a href="#index" data-tab="index">పుస్తకాలు<small>Books</small></a>
+    <a href="#read" data-tab="read">చదవండి<small>Read</small></a>
+    <a href="#plan" data-tab="plan">ప్రణాళిక<small>Plan</small></a>
+    <a href="#highlights" data-tab="highlights">హైలైట్స్<small>Highlights</small></a>
+    <a href="#journal" data-tab="journal">డైరీ<small>Journal</small></a>
+    <a href="#memorize" data-tab="memorize">కంఠస్థం<small>Memorize</small></a>
+  </nav>
+</header>
+
+<main id="view"><div class="empty">లోడ్ అవుతోంది… / Loading…</div></main>
+
+<div id="sheet" class="sheet hidden" role="dialog" aria-label="Selected verses"></div>
+<div id="aiBackdrop" class="backdrop hidden"></div>
+<aside id="ai" class="drawer hidden" role="dialog" aria-label="Pastor help"></aside>
+<div id="settings" class="panel hidden" role="dialog" aria-label="Reading settings"></div>
+<div id="modal" class="modal hidden"><div class="modal-card" id="modalCard"></div></div>
+<div id="toast" role="status"></div>
+
+<script src="/bible/app.js"></script>
+</body>
+</html>

@@ -1,7 +1,8 @@
 # Reimbursement
 
 A single Node/Express web app for two personal Google-Drive-backed tools —
-bill submission and OCR test-image upload — plus a dev-only helper for
+bill submission and OCR test-image upload — a Telugu Bible reader with a
+1-year reading plan, plus a dev-only helper for
 hardening the receipt parser against real camera photos. Everything lives
 in this one repo/npm package and deploys as one web service.
 
@@ -10,11 +11,15 @@ Reimbursement/
 ├── public/
 │   ├── index.html            ← launcher page: pick Bill Submission or OCR
 │   ├── bill.html              ← the bill-submission form
-│   └── ocr.html                ← the OCR image-upload form
+│   ├── ocr.html                ← the OCR image-upload form
+│   ├── bible.html              ← the Telugu Bible reader
+│   └── bible/                  ← reader script + generated Bible data (JSON)
 │   (all served as-is, no build step)
 ├── server.js                  ← Express server + Google Drive/Gmail logic
+├── bibleRoutes.js              ← /api/bible: reading progress store + Gemini proxy
 ├── zomatoParser.js             ← parses Zomato order PDFs into bill rows
 ├── dev-tools/
+│   ├── bible/                  ← downloads the IRV Telugu text, builds the plan
 │   └── ocr-robustness-fixtures/  ← dev tool: generates camera-noise test
 │       ├── README.md              images to stress-test the receipt parser
 │       ├── config.js               (see its README for setup/usage)
@@ -36,6 +41,7 @@ Open the app and pick a tool:
 - **OCR Image Upload** (`/ocr.html`) — upload or photograph an image and
   it's saved straight to a Google Drive folder (same upload-to-Drive
   mechanism as bill submission, no CSV row).
+- **Telugu Bible (IRV)** (`/bible.html`) — see [Telugu Bible reader](#telugu-bible-reader).
 
 ## 1. One-time Google Cloud setup (OAuth for personal Drive)
 
@@ -200,6 +206,51 @@ path and point `GOOGLE_OAUTH_TOKEN_FILE` / `ZOMATO_GMAIL_SYNCED_FILE` at it
   on the public internet, put it behind at least a simple password/HTTP
   basic auth so random visitors can't submit bills into your Drive.
 - Amounts are stored as plain numbers (e.g. `250.00`), always in rupees.
+
+## Telugu Bible reader
+
+`/bible.html` is a reader for the **Indian Revised Version (IRV) Telugu 2019**
+Bible (© 2017, 2019 Bridge Connectivity Solutions, CC BY-SA 4.0, text from
+[eBible.org](https://ebible.org/details.php?id=tel2017)). Features:
+
+- Kindle-style reader: Paper / Sepia / White / Night themes, Telugu fonts,
+  text size and spacing, scroll or page-turn mode, a screen dimmer and a
+  20-20-20 eye-rest reminder.
+- **1-year chronological plan** (365 days, ~85 verses a day) starting on the
+  date in settings (default Mon 5 Oct 2026). On the Books page, chapters you've
+  read are green, chapters behind plan are red, and today's chapters are
+  outlined. A gentle catch-up spreads missed chapters over a week, and
+  "Fresh start" shifts the plan if you fall far behind.
+- Highlights in named colours (rename them on the Highlights page), with
+  notes. You can browse them by colour.
+- Tap verses to select them, then get **Pastor help to understand**,
+  **Pastor's prayer**, *Apply to my life*, *Historical context* or
+  *Cross-references* from Gemini, in Telugu or English. "How are you feeling?"
+  on the home page suggests verses for a feeling.
+- Reflection journal (what it says, what it says to me, what I will do, mood,
+  gratitude), streaks with a weekly grace day, verse of the day, and
+  memory flashcards.
+
+Setup:
+
+1. The Bible text is already in `public/bible/data/`. To regenerate it (or
+   after editing `dev-tools/bible/chronological-order.js`), run
+   `npm run bible:fetch`.
+2. Add `GEMINI_API_KEY` to `.env` (get one at https://aistudio.google.com/apikey).
+   `GEMINI_MODEL` is optional and defaults to `gemini-2.5-flash`.
+3. Your progress, highlights, journal and memory cards are saved by the
+   server in `bible-data.json` (git-ignored). Any device that opens the app
+   shares them, so open `http://<this-PC's-LAN-IP>:3000/bible.html` on
+   the tablet. On Render the disk is wiped on every deploy, so attach a persistent
+   disk and point `BIBLE_DATA_FILE` at it if you host it there.
+   Each save keeps the previous version as `bible-data.json.bak`. If the file
+   ever becomes unreadable the app stops with an error instead of starting
+   empty and overwriting it — restore the `.bak` and reload.
+4. Set `BIBLE_ACCESS_TOKEN` in `.env` to require an access code for the
+   Bible API (strongly recommended whenever the server is reachable beyond
+   your own LAN, e.g. on Render). Each device asks for it once and remembers it.
+   AI calls are limited to `BIBLE_AI_PER_MINUTE` per device (default 10) and
+   `BIBLE_AI_PER_DAY` in total (default 150).
 
 ## Dev tool: OCR robustness fixtures
 

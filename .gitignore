@@ -9,6 +9,9 @@ service-account-key.json
 oauth-token.json
 zomato-gmail-synced.json
 zomato-completed-days.json
+bible-data.json
+bible-data.json.tmp
+bible-data.json.bak
 *credentials*.json
 *secret*.json
 
