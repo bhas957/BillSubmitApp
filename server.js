@@ -1098,6 +1098,12 @@ app.get('/api/auth-status', async (_req, res) => {
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
+// Lightweight keep-alive endpoint for UptimeRobot pings (prevents Render free-tier sleep).
+app.get('/api/ai/health', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, status: 'up', uptime: Math.round(process.uptime()), timestamp: new Date().toISOString() });
+});
+
 app.listen(PORT, () => {
   console.log(`Food bill submission server running at http://localhost:${PORT}`);
   if (!hasSavedTokens()) {
