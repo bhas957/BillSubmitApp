@@ -135,7 +135,7 @@ OCR pages, plus both APIs) deploys as a single Render **Web Service**.
 **Ephemeral disk note**: `oauth-token.json` and `zomato-gmail-synced.json`
 are written to the service's local filesystem. On Render's free tier that
 disk is wiped on every redeploy/restart, so you'd need to reconnect Google
-after each one, and a wiped `zomato-gmail-synced.json` means the next Gmail
+after each one (avoid this by setting `GOOGLE_OAUTH_REFRESH_TOKEN`), and a wiped `zomato-gmail-synced.json` means the next Gmail
 sync can re-save Zomato orders it had already synced before the wipe (there's
 no separate content-based dedupe — that file *is* the dedupe record). If
 that matters to you, add a Render **persistent disk** mounted at a fixed
@@ -195,7 +195,7 @@ path and point `GOOGLE_OAUTH_TOKEN_FILE` / `ZOMATO_GMAIL_SYNCED_FILE` at it
   - `GET /auth/google` (optionally `?redirect=/bill.html` or `/ocr.html`)
     starts the OAuth flow and, once connected, sends you back to that page
     (falls back to `/`). The redirect target is checked against a fixed
-    whitelist (`/`, `/bill.html`, `/ocr.html`) so it can't be hijacked into
+    whitelist (`/`, `/bill.html`, `/ocr.html`, `/bible.html`) so it can't be hijacked into
     redirecting somewhere else.
 
 ## Notes & limits
@@ -241,8 +241,15 @@ Setup:
 3. Your progress, highlights, journal and memory cards are saved by the
    server in `bible-data.json` (git-ignored). Any device that opens the app
    shares them, so open `http://<this-PC's-LAN-IP>:3000/bible.html` on
-   the tablet. On Render the disk is wiped on every deploy, so attach a persistent
-   disk and point `BIBLE_DATA_FILE` at it if you host it there.
+   the tablet. While Google is connected, every change is also uploaded to a
+   `bible-data.json` file in your Drive folder (`BIBLE_DRIVE_FOLDER_ID`,
+   default `DRIVE_FOLDER_ID`), and each request first pulls that file if
+   another server changed it — so a Render restart, which wipes the disk,
+   loses nothing, and the PC and Render share one copy. If Drive is
+   unreachable the change is kept locally, the app warns you, and it is
+   uploaded with the next change. On Render, set `GOOGLE_OAUTH_REFRESH_TOKEN`
+   (see `.env.example`) so the server is still connected to Google after a
+   restart.
    Each save keeps the previous version as `bible-data.json.bak`. If the file
    ever becomes unreadable the app stops with an error instead of starting
    empty and overwriting it — restore the `.bak` and reload.

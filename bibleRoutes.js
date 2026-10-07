@@ -1,12 +1,12 @@
 // API for the Telugu Bible reader (public/bible.html), mounted at /api/bible.
 // Reading progress, highlights, journal and memory cards live in one JSON file
-// so the tablet and the PC see the same state. AI help is proxied to Gemini
+// (mirrored to Google Drive) so the tablet and the PC see the same state. AI help is proxied to Gemini
 // so the API key never reaches the browser.
 //
 // Every mutation is a small, validated operation (one journal day, one memory
 // card, a few settings) so two devices editing different things never
 // overwrite each other with a stale copy. Handlers load → mutate → save
-// synchronously, so Node never interleaves two writes.
+// through one queue, so two writes never interleave.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -53,6 +53,14 @@ function dataPath() {
 
 class StoreError extends Error {}
 
+function withDefaults(data) {
+  return {
+    ...structuredClone(DEFAULT_STATE),
+    ...data,
+    settings: { ...DEFAULT_STATE.settings, ...(data.settings || {}) },
+  };
+}
+
 function loadState() {
   if (!fs.existsSync(dataPath())) return structuredClone(DEFAULT_STATE);
   let data;
@@ -64,11 +72,7 @@ function loadState() {
     throw new StoreError(`Bible data file ${dataPath()} is unreadable (${err.message}). `
       + 'Nothing was changed. Fix it or restore it from the .bak copy next to it, then reload.');
   }
-  return {
-    ...structuredClone(DEFAULT_STATE),
-    ...data,
-    settings: { ...DEFAULT_STATE.settings, ...(data.settings || {}) },
-  };
+  return withDefaults(data);
 }
 
 function saveState(state) {
@@ -80,6 +84,128 @@ function saveState(state) {
   if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
   fs.renameSync(tmp, file);
 }
+
+// ---- Google Drive mirror ----------------------------------------------------
+// Render's disk is wiped on every restart/redeploy, so while Google is
+// connected the whole state is also kept as a JSON file in Drive (like
+// food_bills.csv). Each request first checks the Drive file's version: if
+// another server (say the PC and Render) changed it, that copy is pulled in
+// before the request runs; every change is then uploaded straight away.
+// The local file stays as a cache so the app still works if Drive is down.
+const BIBLE_DRIVE_FILE_NAME = process.env.BIBLE_DRIVE_FILE_NAME || 'bible-data.json';
+
+let drive = { getClient: null, folderId: null };
+let driveVersion = null;  // Drive version our local copy matches
+let driveDirty = false;   // local copy has changes Drive doesn't have yet
+let driveError = null;    // last Drive failure, shown to the reader
+
+function driveClient() {
+  if (!drive.getClient || !drive.folderId) return null;
+  try {
+    return drive.getClient();
+  } catch (err) {
+    if (err.code === 'GOOGLE_AUTH_REQUIRED') return null;
+    throw err;
+  }
+}
+
+function driveStatus() {
+  const connected = Boolean(driveClient());
+  return { connected, ok: connected && !driveDirty && !driveError, error: driveError };
+}
+
+function noteDriveError(err) {
+  driveError = err.response?.data?.error?.message || err.message || String(err);
+  console.error('Bible Drive sync error:', driveError);
+}
+
+async function findDriveFile(client) {
+  const name = BIBLE_DRIVE_FILE_NAME.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const res = await client.files.list({
+    q: `name='${name}' and '${drive.folderId}' in parents and trashed=false`,
+    fields: 'files(id,version)',
+    orderBy: 'modifiedTime desc',
+    pageSize: 1,
+    spaces: 'drive',
+  });
+  return res.data.files?.[0] || null;
+}
+
+// Returns the state to work on: the Drive copy if it changed since we last
+// saw it, otherwise the local one.
+async function pullFromDrive(client, local) {
+  const file = await findDriveFile(client);
+  if (!file) { driveDirty = true; return local; }
+  if (file.version === driveVersion) return local;
+
+  const res = await client.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'text' });
+  let remote;
+  try {
+    remote = withDefaults(JSON.parse(res.data));
+  } catch (err) {
+    throw new Error(`${BIBLE_DRIVE_FILE_NAME} in Google Drive is unreadable (${err.message}) — fix or delete it there`);
+  }
+  // First look since this server started: keep whichever copy is newer, so
+  // changes saved locally while Drive was unreachable are not dropped.
+  if (driveVersion === null && (local.updatedAt || 0) > (remote.updatedAt || 0)) {
+    driveDirty = true;
+    return local;
+  }
+  saveState(remote);
+  driveVersion = file.version;
+  driveDirty = false;
+  return remote;
+}
+
+async function pushToDrive(client, state) {
+  const media = { mimeType: 'application/json', body: JSON.stringify(state, null, 2) };
+  const file = await findDriveFile(client);
+  const res = file
+    ? await client.files.update({ fileId: file.id, media, fields: 'id,version' })
+    : await client.files.create({
+      requestBody: { name: BIBLE_DRIVE_FILE_NAME, parents: [drive.folderId], mimeType: 'application/json' },
+      media,
+      fields: 'id,version',
+    });
+  driveVersion = res.data.version;
+  driveDirty = false;
+  driveError = null;
+}
+
+// Runs load → (mutate) → save one request at a time, syncing with Drive around it.
+let queue = Promise.resolve();
+function withState(mutate) {
+  const run = queue.then(async () => {
+    let state = loadState();
+    const client = driveClient();
+    let pulled = false;
+    if (client) {
+      try {
+        state = await pullFromDrive(client, state);
+        pulled = true;
+        driveError = null;
+      } catch (err) {
+        noteDriveError(err);
+      }
+    }
+    if (mutate) {
+      mutate(state);
+      state.updatedAt = Date.now();
+      saveState(state);
+      driveDirty = true;
+    }
+    // Never push after a failed pull: that could overwrite newer data from another device.
+    if (client && pulled && driveDirty) {
+      await pushToDrive(client, state).catch(noteDriveError);
+    }
+    return state;
+  });
+  queue = run.catch(() => {});
+  return run;
+}
+
+// Express 4 doesn't catch rejected promises, so route them to the error handler.
+const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
 // ---- Validation -------------------------------------------------------------
 // Book codes and chapter/verse counts come from the generated Bible data.
@@ -344,94 +470,95 @@ router.use((req, res, next) => {
   res.status(401).json({ error: 'Access code required', needToken: true });
 });
 
-router.get('/state', (_req, res) => {
-  res.json({ ...loadState(), aiConfigured: Boolean(GEMINI_API_KEY) });
-});
+router.get('/state', route(async (_req, res) => {
+  const state = await withState();
+  res.json({ ...state, aiConfigured: Boolean(GEMINI_API_KEY), drive: driveStatus() });
+}));
 
 // body: any of { settings: {key: value, ...} (merged), highlightColors: [...], lastRead: {...} }
-router.patch('/state', (req, res) => {
+router.patch('/state', route(async (req, res) => {
   const body = req.body || {};
   const unknown = Object.keys(body).filter((k) => !['settings', 'highlightColors', 'lastRead'].includes(k));
   if (unknown.length) fail(`Cannot patch ${unknown.join(', ')}`);
   const settings = 'settings' in body ? validSettings(body.settings) : null;
   const colors = 'highlightColors' in body ? validColors(body.highlightColors) : null;
   const lastRead = 'lastRead' in body ? validLastRead(body.lastRead) : undefined;
-  const state = loadState();
-  if (settings) state.settings = { ...state.settings, ...settings };
-  if (colors) state.highlightColors = colors;
-  if (lastRead !== undefined) state.lastRead = lastRead;
-  saveState(state);
-  res.json({ ok: true });
-});
+  await withState((state) => {
+    if (settings) state.settings = { ...state.settings, ...settings };
+    if (colors) state.highlightColors = colors;
+    if (lastRead !== undefined) state.lastRead = lastRead;
+  });
+  res.json({ ok: true, drive: driveStatus() });
+}));
 
 // body: { entry: {...} | null } — replaces (or deletes) one day's journal entry.
-router.put('/journal/:day', (req, res) => {
+router.put('/journal/:day', route(async (req, res) => {
   const { day } = req.params;
   if (!isDate(day)) fail('day must be YYYY-MM-DD');
   const entry = req.body?.entry === null ? null : validJournalEntry(req.body?.entry);
-  const state = loadState();
-  if (entry) state.journal[day] = entry;
-  else delete state.journal[day];
-  saveState(state);
-  res.json({ ok: true });
-});
+  await withState((state) => {
+    if (entry) state.journal[day] = entry;
+    else delete state.journal[day];
+  });
+  res.json({ ok: true, drive: driveStatus() });
+}));
 
 // body: { card: {...} } — adds or updates one memory card (matched by ref).
-router.put('/memory', (req, res) => {
+router.put('/memory', route(async (req, res) => {
   const card = validMemoryCard(req.body?.card);
-  const state = loadState();
-  const i = state.memory.findIndex((m) => m.ref === card.ref);
-  if (i >= 0) state.memory[i] = card;
-  else if (state.memory.length >= 1000) fail('Too many memory cards');
-  else state.memory.push(card);
-  saveState(state);
-  res.json({ ok: true });
-});
+  await withState((state) => {
+    const i = state.memory.findIndex((m) => m.ref === card.ref);
+    if (i >= 0) state.memory[i] = card;
+    else if (state.memory.length >= 1000) fail('Too many memory cards');
+    else state.memory.push(card);
+  });
+  res.json({ ok: true, drive: driveStatus() });
+}));
 
 // body: { ref }
-router.delete('/memory', (req, res) => {
+router.delete('/memory', route(async (req, res) => {
   const { ref } = req.body || {};
   if (!isStr(ref, 60)) fail('ref is required');
-  const state = loadState();
-  state.memory = state.memory.filter((m) => m.ref !== ref);
-  saveState(state);
-  res.json({ ok: true });
-});
+  await withState((state) => {
+    state.memory = state.memory.filter((m) => m.ref !== ref);
+  });
+  res.json({ ok: true, drive: driveStatus() });
+}));
 
 // body: { refs: ["JOH.3.16", ...], colorId: "yellow" | null, note? }
-router.post('/highlights', (req, res) => {
+router.post('/highlights', route(async (req, res) => {
   const { refs, colorId, note } = req.body || {};
   if (!Array.isArray(refs) || !refs.length || refs.length > 200) fail('refs is required');
   if (!refs.every(validVerseKey)) fail('Invalid verse reference');
   if (note !== undefined && !isStr(note, 10000)) fail('Note is too long');
-  const state = loadState();
-  if (colorId && !state.highlightColors.some((c) => c.id === colorId)) fail(`Unknown colour "${colorId}"`);
-  for (const ref of refs) {
-    if (!colorId) {
-      delete state.highlights[ref];
-    } else {
-      const prev = state.highlights[ref] || {};
-      state.highlights[ref] = { colorId, note: note ?? prev.note ?? '', ts: Date.now() };
+  const state = await withState((st) => {
+    if (colorId && !st.highlightColors.some((c) => c.id === colorId)) fail(`Unknown colour "${colorId}"`);
+    for (const ref of refs) {
+      if (!colorId) {
+        delete st.highlights[ref];
+      } else {
+        const prev = st.highlights[ref] || {};
+        st.highlights[ref] = { colorId, note: note ?? prev.note ?? '', ts: Date.now() };
+      }
     }
-  }
-  saveState(state);
-  res.json({ ok: true, highlights: state.highlights });
-});
+  });
+  res.json({ ok: true, highlights: state.highlights, drive: driveStatus() });
+}));
 
 // body: { chapter: "GEN 1" | chapters: ["GEN 1", ...], done: true|false, date: "YYYY-MM-DD" }
-router.post('/complete', (req, res) => {
+router.post('/complete', route(async (req, res) => {
   const { chapter, chapters, done, date } = req.body || {};
   const list = Array.isArray(chapters) ? chapters : [chapter];
   if (!list.length || list.length > 100 || !list.every(validChapterRef)) fail('chapter like "GEN 1" is required');
   const day = done === false ? null : validCompletionDate(date);
-  const state = loadState();
-  for (const ref of list) {
-    if (done === false) delete state.completed[ref];
-    else state.completed[ref] = day;
-  }
-  saveState(state);
-  res.json({ ok: true, completed: state.completed });
-});
+  const state = await withState((st) => {
+    for (const ref of list) {
+      if (done === false) delete st.completed[ref];
+      else st.completed[ref] = day;
+    }
+  });
+  res.json({ ok: true, completed: state.completed, drive: driveStatus() });
+}));
 
 // body: { action, reference, text, lang, feeling?, note? }
 router.post('/ai', (req, res, next) => {
@@ -465,4 +592,8 @@ router.use((err, _req, res, _next) => {
   res.status(500).json({ error: err.message });
 });
 
-module.exports = router;
+// options: { getDriveClient, folderId } — enables the Google Drive mirror.
+module.exports = function createBibleRouter(options = {}) {
+  drive = { getClient: options.getDriveClient || null, folderId: options.folderId || null };
+  return router;
+};

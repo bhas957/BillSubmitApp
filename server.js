@@ -16,6 +16,8 @@ const OAUTH_CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
 const OAUTH_CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
 const OAUTH_REDIRECT_URI = process.env.GOOGLE_OAUTH_REDIRECT_URI || `http://localhost:${PORT}/auth/google/callback`;
 const TOKEN_FILE = process.env.GOOGLE_OAUTH_TOKEN_FILE || './oauth-token.json';
+// Used when the token file is missing, e.g. after Render wipes the disk on restart.
+const OAUTH_REFRESH_TOKEN = process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
 const OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -44,7 +46,10 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
-app.use('/api/bible', require('./bibleRoutes'));
+app.use('/api/bible', require('./bibleRoutes')({
+  getDriveClient: getDriveClientOrThrow,
+  folderId: process.env.BIBLE_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID,
+}));
 
 // Keep uploads in memory; bills are small images/PDFs, not huge files.
 const upload = multer({
@@ -64,17 +69,18 @@ function tokenFilePath() {
 }
 
 function hasSavedTokens() {
-  return fs.existsSync(tokenFilePath());
+  return fs.existsSync(tokenFilePath()) || Boolean(OAUTH_REFRESH_TOKEN);
 }
 
 function loadSavedTokens() {
-  if (!hasSavedTokens()) return null;
-  try {
-    return JSON.parse(fs.readFileSync(tokenFilePath(), 'utf8'));
-  } catch (err) {
-    console.error('Could not read saved OAuth tokens:', err.message);
-    return null;
+  if (fs.existsSync(tokenFilePath())) {
+    try {
+      return JSON.parse(fs.readFileSync(tokenFilePath(), 'utf8'));
+    } catch (err) {
+      console.error('Could not read saved OAuth tokens:', err.message);
+    }
   }
+  return OAUTH_REFRESH_TOKEN ? { refresh_token: OAUTH_REFRESH_TOKEN } : null;
 }
 
 function saveTokens(tokens) {
@@ -97,7 +103,7 @@ oauth2Client.on('tokens', (tokens) => {
 
 // Whitelist of pages the OAuth flow is allowed to bounce back to, so the
 // callback's redirect target can't be hijacked into an open redirect.
-const ALLOWED_OAUTH_REDIRECTS = new Set(['/', '/bill.html', '/ocr.html']);
+const ALLOWED_OAUTH_REDIRECTS = new Set(['/', '/bill.html', '/ocr.html', '/bible.html']);
 
 function safeOAuthRedirect(value) {
   return ALLOWED_OAUTH_REDIRECTS.has(value) ? value : '/';

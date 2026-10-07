@@ -156,7 +156,25 @@ async function api(method, url, body, opts = {}, retried = false) {
     }
   }
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  if (json.drive) noteDrive(json.drive, method !== 'GET');
   return json;
+}
+// The server mirrors everything to a JSON file in Google Drive, because a
+// restart on Render wipes its disk. Warn whenever a change didn't reach Drive.
+function noteDrive(drive, afterSave) {
+  S.drive = drive;
+  if (!afterSave || drive.ok) return;
+  toast(drive.connected
+    ? `⚠ Google Drive లో సేవ్ కాలేదు / Not backed up to Drive: ${drive.error || 'will retry on the next change'}`
+    : '⚠ Google Drive కనెక్ట్ కాలేదు / Not backed up — connect Google Drive on the home page', 5000);
+}
+function driveBanner() {
+  const d = S.drive;
+  if (!d || d.ok) return '';
+  const msg = d.connected
+    ? `Google Drive backup failed: ${esc(d.error || 'pending')}. It retries on your next change.`
+    : 'Google Drive is not connected — your reading progress may be lost when the server restarts.';
+  return `<div class="card err" style="font-size:13.5px">⚠ ${msg} <a href="/auth/google?redirect=/bible.html">Connect Google Drive</a></div>`;
 }
 function normalizeState(st) {
   st.settings = { ...DEFAULT_SETTINGS, ...(st.settings || {}) };
@@ -374,6 +392,7 @@ function renderHome() {
       <div class="day">${esc(dayLine)}</div>
       <div class="title">${greet} 🙏</div>
     </div>
+    ${driveBanner()}
 
     <div class="card">
       <h3>${t < 1 ? 'మొదటి రోజు చదువు' : 'ఈరోజు చదువు'} <small>${t < 1 ? 'Day 1 preview' : `Today's reading · due ${fmtDate(dueDate(clampDay(t)))}`}</small></h3>
