@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Note My Health Problems</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .sync { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 18px; font-size: 13px; }
+  .sync .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .sync.ok .dot { background: var(--good); }
+  .sync.warn .dot { background: var(--warning); }
+  .sync.bad .dot { background: var(--critical); }
+  .sync .spacer { flex: 1; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+  @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat .label { font-size: 12px; color: var(--ink-soft); }
+  .stat .value { font-size: 26px; font-weight: 600; }
+
+  .quick { margin-bottom: 18px; }
+  .quick h2, .listhead h2 { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 10px; color: var(--ink-soft); }
+  .quick .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .quick .row input { flex: 1 1 240px; }
+  .quick .chips { margin-top: 10px; }
+  .quick .chip { font-size: 12px; min-height: 30px; }
+
+  .listhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px; }
+  .listhead h2 { margin: 0; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .filters select, .filters input { width: auto; min-width: 150px; flex: 1 1 150px; max-width: 240px; }
+
+  .plist { display: flex; flex-direction: column; gap: 12px; }
+  .problem { padding: 14px 16px; }
+  .problem.resolved { opacity: .78; }
+  .ptop { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .ptitle { font-weight: 600; font-size: 16px; flex: 1 1 200px; word-break: break-word; }
+  .pmeta { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-soft); margin-top: 6px; }
+  .cat { font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; border: 1px solid var(--line); padding: 1px 7px; color: var(--ink-soft); }
+  .sev { display: inline-flex; align-items: center; gap: 6px; }
+  .sev .bar { width: 70px; height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+  .sev .bar i { display: block; height: 100%; border-radius: 3px; }
+  .pdetails { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 18px; margin-top: 10px; font-size: 13.5px; }
+  .pdetails div b { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .pdetails div span { white-space: pre-wrap; word-break: break-word; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .tags span { font-size: 11.5px; background: var(--accent-wash); color: var(--accent-ink); padding: 1px 8px; border-radius: 999px; }
+  .log { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+  .log ol { list-style: none; margin: 0; padding: 0; }
+  .log li { display: grid; grid-template-columns: 92px 44px 1fr auto; gap: 8px; font-size: 13px; padding: 3px 0; align-items: baseline; }
+  .log li .d { color: var(--muted); }
+  .log li .s { font-weight: 600; }
+  .log .more { font-size: 12px; }
+  .spark { margin-top: 8px; }
+  .pactions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+
+  .st-active { background: var(--bad-bg); color: var(--critical-ink); }
+  .st-recurring { background: var(--warn-bg); color: var(--ink); }
+  .st-improving { background: var(--accent-wash); color: var(--accent-ink); }
+  .st-watching { background: var(--grid); color: var(--ink-soft); }
+  .st-resolved { background: var(--good-bg); color: var(--good-ink); }
+
+  dialog { border: 1px solid var(--paper-edge); background: var(--paper); color: var(--ink); padding: 0; width: min(760px, calc(100% - 24px)); max-height: calc(100% - 24px); box-shadow: var(--shadow); border-radius: 2px; }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog form { padding: 18px; }
+  dialog h3 { font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; font-size: 14px; margin: 0 0 14px; }
+  .fgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .fgrid .full { grid-column: 1 / -1; }
+  @media (max-width: 600px) { .fgrid { grid-template-columns: 1fr; } }
+  .sevrow { display: flex; align-items: center; gap: 10px; }
+  .sevrow input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .sevrow output { min-width: 110px; font-weight: 600; font-size: 13px; }
+  .dlg-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+  .dlg-actions .left { margin-right: auto; }
+  .markers { max-height: 150px; overflow: auto; border: 1px solid var(--line); padding: 8px; background: var(--surface); }
+  .markers .chip { font-size: 12px; min-height: 28px; padding: 2px 10px; }
+  .hint { font-size: 12px; color: var(--muted); }
+  .catlist { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
+  .catlist .r { display: flex; gap: 6px; }
+
+  /* Doctor summary (print) */
+  #printSummary { display: none; }
+  @media print {
+    body > .wrap > *:not(#printSummary) { display: none !important; }
+    #printSummary { display: block; }
+    #printSummary h2 { font-size: 18px; }
+    #printSummary table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    #printSummary th, #printSummary td { border: 1px solid #999; padding: 5px; text-align: left; vertical-align: top; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / Health problems</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title">Note my health problems</h1>
+  <p class="lede">Write down every symptom when it happens: what, where, how bad, what triggers it and what helps. Every change is saved on the server and synced to your Google Drive (as <span class="mono">health-problems.json</span> and a readable <span class="mono">health-problems.csv</span>).</p>
+
+  <div class="card sync" id="sync" role="status"><span class="dot"></span><span id="syncText">Loading…</span><span class="spacer"></span>
+    <a class="btn small hidden" id="connect" href="/auth/google?redirect=%2FMyHealthReports%2Fnote-my-health-problems.html">Connect Google Drive</a>
+    <button class="btn small" id="syncNow" type="button">Sync now</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card quick">
+    <h2>Add a problem</h2>
+    <form class="row" id="quickForm">
+      <input type="text" id="quickTitle" placeholder="What's bothering you? e.g. Pain in left knee when climbing stairs" maxlength="200" aria-label="Problem title" />
+      <button class="btn primary" type="submit">Add details</button>
+    </form>
+    <div class="hint" style="margin-top:8px">Common ones, tap to start:</div>
+    <div class="chips" id="suggest"></div>
+  </div>
+
+  <div class="listhead">
+    <h2>My problems</h2>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn small ghost" id="manageCats" type="button">Categories</button>
+    <button class="btn small ghost" id="exportCsv" type="button">Export CSV</button>
+    <button class="btn small ghost" id="printBtn" type="button">Doctor summary</button>
+  </div>
+  <div class="filters">
+    <div class="chips" role="group" aria-label="Status filter" id="statusFilter">
+      <button type="button" class="chip" data-sf="open" aria-pressed="true">Open</button>
+      <button type="button" class="chip" data-sf="resolved" aria-pressed="false">Resolved</button>
+      <button type="button" class="chip" data-sf="all" aria-pressed="false">All</button>
+    </div>
+    <select id="catFilter" aria-label="Category filter"><option value="">All categories</option></select>
+    <select id="sortBy" aria-label="Sort">
+      <option value="updated">Recently updated</option>
+      <option value="severity">Most severe first</option>
+      <option value="onset">Oldest problem first</option>
+      <option value="category">By category</option>
+    </select>
+    <input type="search" id="q" placeholder="Search notes, triggers, medicines…" aria-label="Search" />
+  </div>
+  <div class="plist" id="list"><div class="card empty">Loading…</div></div>
+
+  <p class="disclaimer">For severe chest pain, trouble breathing, fainting, sudden weakness or confusion, call 112 now. This log helps you and your doctor, and does not replace one.</p>
+
+  <div id="printSummary"></div>
+</div>
+
+<!-- Add / edit dialog -->
+<dialog id="dlg">
+  <form id="pForm" method="dialog">
+    <h3 id="dlgTitle">New problem</h3>
+    <div class="fgrid">
+      <label class="field full"><span>What is the problem? *</span><input type="text" name="title" required maxlength="200" /></label>
+      <label class="field"><span>Category</span><select name="category"></select></label>
+      <label class="field"><span>Status</span><select name="status"></select></label>
+      <div class="field full"><span>How bad is it now? (0 none – 10 worst)</span>
+        <div class="sevrow"><input type="range" name="severity" min="0" max="10" step="1" value="5" /><output id="sevOut"></output></div></div>
+      <label class="field"><span>Started on</span><input type="date" name="onset" /></label>
+      <label class="field"><span>Resolved on</span><input type="date" name="resolvedOn" /></label>
+      <label class="field"><span>How often</span><select name="frequency"></select></label>
+      <label class="field"><span>When does it happen</span><select name="timeOfDay"></select></label>
+      <label class="field full"><span>Where in the body</span><input type="text" name="bodyArea" maxlength="120" placeholder="e.g. both calves, right side of head, upper stomach" /></label>
+      <label class="field"><span>Triggers / makes it worse</span><textarea name="triggers" maxlength="2000" placeholder="e.g. after rice, long sitting, screen time"></textarea></label>
+      <label class="field"><span>What helps</span><textarea name="relievers" maxlength="2000" placeholder="e.g. walking, rest, hot water"></textarea></label>
+      <label class="field"><span>Medicines / supplements tried</span><textarea name="medicines" maxlength="2000" placeholder="Name, dose, from when, did it help?"></textarea></label>
+      <label class="field"><span>Doctor / plan</span><textarea name="doctor" maxlength="2000" placeholder="Who you saw, what they said, next visit"></textarea></label>
+      <div class="field full"><span>Related lab tests (optional)</span><div class="markers chips" id="markerPick"></div></div>
+      <label class="field full"><span>Tags (comma separated)</span><input type="text" name="tags" maxlength="400" placeholder="e.g. work stress, monsoon, after gym" /></label>
+      <label class="field full"><span>Notes</span><textarea name="notes" maxlength="10000" rows="3" placeholder="Anything else: what it feels like, how it affects your day"></textarea></label>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn ghost danger left hidden" type="button" id="delBtn">Delete</button>
+      <button class="btn ghost" type="button" value="cancel" id="cancelBtn">Cancel</button>
+      <button class="btn primary" type="submit" id="saveBtn">Save &amp; sync</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Log entry dialog -->
+<dialog id="logDlg">
+  <form id="logForm" method="dialog">
+    <h3>Log an update: <span id="logFor"></span></h3>
+    <div class="fgrid">
+      <label class="field"><span>Date</span><input type="date" name="date" required /></label>
+      <div class="field"><span>Severity today</span><div class="sevrow"><input type="range" name="severity" min="0" max="10" value="5" /><output id="logSevOut"></output></div></div>
+      <label class="field full"><span>What happened?</span><textarea name="note" maxlength="2000" rows="3" placeholder="e.g. Pain started after lunch, lasted 2 hours, better after walk"></textarea></label>
+    </div>
+    <div class="dlg-actions">
+      <button class="btn ghost" type="button" id="logCancel">Cancel</button>
+      <button class="btn primary" type="submit">Add to log</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Categories dialog -->
+<dialog id="catDlg">
+  <form id="catForm" method="dialog">
+    <h3>Categories</h3>
+    <p class="hint">Rename, add or remove categories. A category still used by a problem can't be removed.</p>
+    <div class="catlist" id="catList"></div>
+    <button class="btn small ghost" type="button" id="addCat" style="margin-top:8px">+ Add category</button>
+    <div class="dlg-actions">
+      <button class="btn ghost" type="button" id="catCancel">Cancel</button>
+      <button class="btn primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const { api, toast, esc, fmtDate } = window.Health;
+const DRAFT_KEY = 'health-problem-draft';
+const STATUS_LABEL = { active: '● Active', improving: '↗ Improving', recurring: '↻ Comes and goes', watching: '◔ Watching', resolved: '✓ Resolved' };
+const FREQ_LABEL = { '': 'Not sure', once: 'Just once', constant: 'All the time', daily: 'Daily', 'few times a week': 'Few times a week', weekly: 'Weekly', monthly: 'Monthly', occasionally: 'Now and then' };
+const TIME_LABEL = { '': 'Not sure', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night', 'after meals': 'After meals', 'after exercise': 'After exercise', 'any time': 'Any time' };
+const SUGGEST = [
+  ['Tiredness / low energy', 'Energy & sleep'], ['Headache', 'Head, memory & nerves'], ['Poor memory / focus', 'Head, memory & nerves'],
+  ['Gas / bloating', 'Digestion & gut'], ['Acidity / heartburn', 'Digestion & gut'], ['Leg pain', 'Muscles, joints & pain'],
+  ['Back pain', 'Muscles, joints & pain'], ['Eye pain / strain', 'Eyes'], ['Poor sleep', 'Energy & sleep'],
+  ['Belly fat / weight gain', 'Sugar, weight & metabolism'], ['Stress / anxiety', 'Mood & stress'], ['Hair fall', 'Skin & hair'],
+  ['Cold / cough', 'Breathing, nose & throat'], ['Fever', 'Fever & infection'],
+];
+
+let S = { problems: [], categories: [], statuses: [], frequencies: [], times: [], drive: null };
+let markers = [];
+let filt = { status: 'open', cat: '', sort: 'updated', q: '' };
+let editing = null; // problem id or null for new
+let loggingId = null;
+let busy = false;
+
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const sevWord = (n) => n === 0 ? 'None' : n <= 3 ? 'Mild' : n <= 6 ? 'Moderate' : n <= 8 ? 'Severe' : 'Very severe';
+const sevColor = (n) => n <= 3 ? 'var(--good)' : n <= 6 ? 'var(--warning)' : 'var(--critical)';
+function since(iso) {
+  if (!iso) return '';
+  const days = Math.round((new Date(today()) - new Date(iso)) / 864e5);
+  if (days < 1) return 'since today';
+  if (days < 14) return `for ${days} day${days > 1 ? 's' : ''}`;
+  if (days < 60) return `for ${Math.round(days / 7)} weeks`;
+  if (days < 730) return `for ${Math.round(days / 30.4)} months`;
+  return `for ${(days / 365).toFixed(1)} years`;
+}
+
+// ---- Sync status ---------------------------------------------------------------
+function showDrive(d, saving) {
+  const el = document.getElementById('sync');
+  const txt = document.getElementById('syncText');
+  el.classList.remove('ok', 'warn', 'bad');
+  document.getElementById('connect').classList.toggle('hidden', !!(d && d.connected));
+  if (saving) { el.classList.add('warn'); txt.textContent = 'Saving…'; return; }
+  if (!d) { el.classList.add('bad'); txt.textContent = 'Could not reach the server. Your last change may not be saved.'; return; }
+  if (!d.connected) { el.classList.add('warn'); txt.textContent = 'Saved on the server only. Google Drive is not connected, so connect it to keep a copy in Drive.'; return; }
+  if (d.ok) { el.classList.add('ok'); txt.textContent = `Synced to Google Drive · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`; return; }
+  el.classList.add('bad');
+  txt.textContent = `Saved on the server, but Drive sync failed${d.error ? `: ${d.error}` : ''}. It will retry on your next change, or press Sync now.`;
+}
+
+async function call(path, opts, okMsg) {
+  if (busy) return null;
+  busy = true;
+  showDrive(S.drive, true);
+  try {
+    const r = await api(path, opts);
+    if (r.drive) S.drive = r.drive;
+    showDrive(S.drive);
+    if (okMsg) toast(okMsg + (S.drive?.ok ? ' · synced to Drive' : ''));
+    return r;
+  } catch (e) {
+    showDrive(S.drive);
+    toast(e.message, 5000);
+    throw e;
+  } finally {
+    busy = false;
+  }
+}
+
+// ---- Rendering -----------------------------------------------------------------
+function renderStats() {
+  const open = S.problems.filter((p) => p.status !== 'resolved');
+  const severe = open.filter((p) => p.severity >= 7).length;
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  const recent = S.problems.reduce((n, p) => n + (p.log || []).filter((l) => l.date >= weekAgo).length, 0);
+  const byCat = {};
+  open.forEach((p) => { byCat[p.category] = (byCat[p.category] || 0) + 1; });
+  const top = Object.entries(byCat).sort((a, b) => b[1] - a[1])[0];
+  document.getElementById('stats').innerHTML = `
+    <div class="card stat"><div class="label">Open problems</div><div class="value num">${open.length}</div></div>
+    <div class="card stat"><div class="label">Severe now (7+)</div><div class="value num">${severe}</div></div>
+    <div class="card stat"><div class="label">Log entries this week</div><div class="value num">${recent}</div></div>
+    <div class="card stat"><div class="label">Most common area</div><div class="value" style="font-size:15px;margin-top:8px">${top ? `${esc(top[0])} (${top[1]})` : '–'}</div></div>`;
+}
+
+function renderSuggest() {
+  const have = new Set(S.problems.filter((p) => p.status !== 'resolved').map((p) => p.title.toLowerCase()));
+  document.getElementById('suggest').innerHTML = SUGGEST.filter(([t]) => !have.has(t.toLowerCase()))
+    .map(([t, c]) => `<button type="button" class="chip" data-suggest="${esc(t)}" data-cat="${esc(c)}">+ ${esc(t)}</button>`).join('');
+}
+
+function renderFilters() {
+  const sel = document.getElementById('catFilter');
+  const counts = {};
+  S.problems.forEach((p) => { counts[p.category] = (counts[p.category] || 0) + 1; });
+  sel.innerHTML = '<option value="">All categories</option>' + S.categories.map((c) =>
+    `<option value="${esc(c)}"${c === filt.cat ? ' selected' : ''}>${esc(c)}${counts[c] ? ` (${counts[c]})` : ''}</option>`).join('');
+  document.querySelectorAll('[data-sf]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.sf === filt.status));
+}
+
+function sparkline(p) {
+  const pts = [...(p.log || [])].reverse();
+  if (pts.length < 2) return '';
+  const W = 160, H = 30, pad = 4;
+  const x = (i) => pad + (i / (pts.length - 1)) * (W - pad * 2);
+  const y = (v) => pad + (1 - v / 10) * (H - pad * 2);
+  return `<svg class="spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Severity over time: ${pts.map((l) => l.severity).join(', ')}">
+    <line x1="${pad}" x2="${W - pad}" y1="${H - pad}" y2="${H - pad}" stroke="var(--grid)"/>
+    <polyline fill="none" stroke="var(--series)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${pts.map((l, i) => `${x(i)},${y(l.severity)}`).join(' ')}"/>
+    <circle cx="${x(pts.length - 1)}" cy="${y(pts[pts.length - 1].severity)}" r="4" fill="var(--series)" stroke="var(--paper)" stroke-width="2"/></svg>`;
+}
+
+function detail(label, v) {
+  return v ? `<div><b>${label}</b><span>${esc(v)}</span></div>` : '';
+}
+
+function renderList() {
+  const q = filt.q.trim().toLowerCase();
+  let ps = S.problems.filter((p) => {
+    if (filt.status === 'open' && p.status === 'resolved') return false;
+    if (filt.status === 'resolved' && p.status !== 'resolved') return false;
+    if (filt.cat && p.category !== filt.cat) return false;
+    if (q) {
+      const hay = [p.title, p.category, p.bodyArea, p.triggers, p.relievers, p.medicines, p.doctor, p.notes, ...(p.tags || []), ...(p.log || []).map((l) => l.note)].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const sorters = {
+    updated: (a, b) => b.updatedAt - a.updatedAt,
+    severity: (a, b) => b.severity - a.severity || b.updatedAt - a.updatedAt,
+    onset: (a, b) => (a.onset || '9999').localeCompare(b.onset || '9999'),
+    category: (a, b) => a.category.localeCompare(b.category) || b.severity - a.severity,
+  };
+  ps = ps.sort(sorters[filt.sort]);
+  const el = document.getElementById('list');
+  if (!ps.length) {
+    el.innerHTML = `<div class="card empty">${S.problems.length ? 'Nothing matches these filters.' : 'No problems noted yet. Add one above, even small things help your doctor see the pattern.'}</div>`;
+    return;
+  }
+  const markerName = (k) => markers.find((m) => m.key === k)?.name || k;
+  el.innerHTML = ps.map((p) => {
+    const log = p.log || [];
+    const shown = log.slice(0, 3);
+    return `<article class="card problem${p.status === 'resolved' ? ' resolved' : ''}" data-id="${p.id}">
+      <div class="ptop">
+        <div class="ptitle">${esc(p.title)}</div>
+        <span class="status st-${p.status}">${STATUS_LABEL[p.status]}</span>
+      </div>
+      <div class="pmeta">
+        <span class="cat">${esc(p.category)}</span>
+        <span class="sev" title="Severity ${p.severity}/10"><span class="bar"><i style="width:${p.severity * 10}%;background:${sevColor(p.severity)}"></i></span>${p.severity}/10 · ${sevWord(p.severity)}</span>
+        ${p.onset ? `<span>Started ${esc(fmtDate(p.onset))} (${since(p.onset)})</span>` : ''}
+        ${p.frequency ? `<span>${esc(FREQ_LABEL[p.frequency])}</span>` : ''}
+        ${p.timeOfDay ? `<span>${esc(TIME_LABEL[p.timeOfDay])}</span>` : ''}
+        ${p.resolvedOn ? `<span>Resolved ${esc(fmtDate(p.resolvedOn))}</span>` : ''}
+      </div>
+      <div class="pdetails">
+        ${detail('Where', p.bodyArea)}${detail('Triggers', p.triggers)}${detail('What helps', p.relievers)}
+        ${detail('Medicines', p.medicines)}${detail('Doctor / plan', p.doctor)}${detail('Notes', p.notes)}
+        ${p.markers?.length ? `<div><b>Related tests</b><span>${p.markers.map((k) => esc(markerName(k))).join(', ')} · <a href="compare.html">see trends</a></span></div>` : ''}
+      </div>
+      ${p.tags?.length ? `<div class="tags">${p.tags.map((t) => `<span>#${esc(t)}</span>`).join('')}</div>` : ''}
+      ${log.length ? `<div class="log">${sparkline(p)}<ol>${shown.map((l) => `<li><span class="d">${esc(fmtDate(l.date, { day: 'numeric', month: 'short', year: '2-digit' }))}</span><span class="s">${l.severity}/10</span><span>${esc(l.note)}</span>
+        <button class="btn small ghost" type="button" data-dellog="${l.id}" aria-label="Remove this log entry">×</button></li>`).join('')}</ol>
+        ${log.length > 3 ? `<details class="more"><summary>${log.length - 3} older entries</summary><ol>${log.slice(3).map((l) => `<li><span class="d">${esc(fmtDate(l.date, { day: 'numeric', month: 'short', year: '2-digit' }))}</span><span class="s">${l.severity}/10</span><span>${esc(l.note)}</span><span></span></li>`).join('')}</ol></details>` : ''}</div>` : ''}
+      <div class="pactions">
+        <button class="btn small primary" type="button" data-log="${p.id}">+ Log update</button>
+        <button class="btn small" type="button" data-edit="${p.id}">Edit</button>
+        ${p.status !== 'resolved' ? `<button class="btn small" type="button" data-resolve="${p.id}">Mark resolved</button>` : `<button class="btn small" type="button" data-reopen="${p.id}">Came back</button>`}
+      </div>
+    </article>`;
+  }).join('');
+}
+
+function renderAll() {
+  renderStats();
+  renderSuggest();
+  renderFilters();
+  renderList();
+}
+
+// ---- Problem dialog --------------------------------------------------------------
+const dlg = document.getElementById('dlg');
+const form = document.getElementById('pForm');
+
+function fillOptions() {
+  form.category.innerHTML = S.categories.map((c) => `<option>${esc(c)}</option>`).join('');
+  form.status.innerHTML = S.statuses.map((s) => `<option value="${s}">${esc(STATUS_LABEL[s])}</option>`).join('');
+  form.frequency.innerHTML = S.frequencies.map((s) => `<option value="${esc(s)}">${esc(FREQ_LABEL[s] ?? s)}</option>`).join('');
+  form.timeOfDay.innerHTML = S.times.map((s) => `<option value="${esc(s)}">${esc(TIME_LABEL[s] ?? s)}</option>`).join('');
+}
+function renderMarkerPick(selected) {
+  const box = document.getElementById('markerPick');
+  if (!markers.length) { box.innerHTML = '<span class="hint">Lab data not available.</span>'; return; }
+  box.innerHTML = markers.map((m) => `<button type="button" class="chip" data-mk="${m.key}" aria-pressed="${selected.includes(m.key)}">${esc(m.name)}</button>`).join('');
+}
+function updateSev() {
+  const n = Number(form.severity.value);
+  document.getElementById('sevOut').textContent = `${n}/10 · ${sevWord(n)}`;
+}
+function syncResolvedField() {
+  form.resolvedOn.disabled = form.status.value !== 'resolved';
+  if (form.status.value === 'resolved' && !form.resolvedOn.value) form.resolvedOn.value = today();
+}
+
+function openDialog(p, preset = {}) {
+  editing = p ? p.id : null;
+  fillOptions();
+  form.reset();
+  // A suggestion or typed title starts fresh; the plain "add" button resumes an unsent draft.
+  const src = p || (Object.keys(preset).length ? preset : (readDraft() || {}));
+  form.title.value = src.title || '';
+  form.category.value = S.categories.includes(src.category) ? src.category : 'Other';
+  if (!S.categories.includes(form.category.value)) form.category.selectedIndex = 0;
+  form.status.value = src.status || 'active';
+  form.severity.value = src.severity ?? 5;
+  form.onset.value = src.onset || (p ? '' : today());
+  form.resolvedOn.value = src.resolvedOn || '';
+  form.frequency.value = src.frequency || '';
+  form.timeOfDay.value = src.timeOfDay || '';
+  for (const k of ['bodyArea', 'triggers', 'relievers', 'medicines', 'doctor', 'notes']) form[k].value = src[k] || '';
+  form.tags.value = (src.tags || []).join(', ');
+  renderMarkerPick(src.markers || []);
+  updateSev();
+  syncResolvedField();
+  document.getElementById('dlgTitle').textContent = p ? 'Edit problem' : 'New problem';
+  document.getElementById('delBtn').classList.toggle('hidden', !p);
+  dlg.showModal();
+  form.title.focus();
+}
+
+function formData() {
+  return {
+    title: form.title.value,
+    category: form.category.value,
+    status: form.status.value,
+    severity: Number(form.severity.value),
+    onset: form.onset.value,
+    resolvedOn: form.status.value === 'resolved' ? form.resolvedOn.value : '',
+    frequency: form.frequency.value,
+    timeOfDay: form.timeOfDay.value,
+    bodyArea: form.bodyArea.value,
+    triggers: form.triggers.value,
+    relievers: form.relievers.value,
+    medicines: form.medicines.value,
+    doctor: form.doctor.value,
+    notes: form.notes.value,
+    tags: form.tags.value.split(',').map((t) => t.trim()).filter(Boolean),
+    markers: [...document.querySelectorAll('#markerPick [aria-pressed="true"]')].map((b) => b.dataset.mk),
+  };
+}
+
+// Unsent new-problem draft survives a closed tab (this device only).
+function readDraft() { try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch { return null; } }
+function writeDraft() { if (editing) return; try { localStorage.setItem(DRAFT_KEY, JSON.stringify(formData())); } catch { /* ignore */ } }
+function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } }
+
+form.addEventListener('input', (e) => {
+  if (e.target.name === 'severity') updateSev();
+  if (e.target.name === 'status') syncResolvedField();
+  writeDraft();
+});
+form.addEventListener('change', (e) => { if (e.target.name === 'status') syncResolvedField(); });
+document.getElementById('markerPick').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-mk]');
+  if (b) { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); writeDraft(); }
+});
+document.getElementById('cancelBtn').addEventListener('click', () => dlg.close());
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = formData();
+  if (!data.title.trim()) { form.title.focus(); return; }
+  const existing = editing && S.problems.find((p) => p.id === editing);
+  try {
+    if (existing) {
+      const r = await call(`/problems/${editing}`, { method: 'PUT', body: { problem: { ...data, log: existing.log } } }, 'Saved');
+      if (!r) return;
+      Object.assign(existing, r.problem);
+    } else {
+      const r = await call('/problems', { method: 'POST', body: { problem: { ...data, log: [{ date: data.onset || today(), severity: data.severity, note: 'First noted' }] } } }, 'Problem added');
+      if (!r) return;
+      S.problems.unshift(r.problem);
+      clearDraft();
+    }
+    dlg.close();
+    renderAll();
+  } catch { /* toast shown */ }
+});
+
+document.getElementById('delBtn').addEventListener('click', async () => {
+  const p = S.problems.find((x) => x.id === editing);
+  if (!p || !confirm(`Delete "${p.title}" and its whole log? This also removes it from Google Drive.`)) return;
+  try {
+    if (!await call(`/problems/${p.id}`, { method: 'DELETE' }, 'Deleted')) return;
+    S.problems = S.problems.filter((x) => x.id !== p.id);
+    dlg.close();
+    renderAll();
+  } catch { /* toast shown */ }
+});
+
+// ---- Quick status changes & log ------------------------------------------------
+async function saveProblem(p, changes, msg) {
+  const body = { ...p, ...changes };
+  const r = await call(`/problems/${p.id}`, { method: 'PUT', body: { problem: body } }, msg);
+  if (r) { Object.assign(p, r.problem); renderAll(); }
+}
+
+const logDlg = document.getElementById('logDlg');
+const logForm = document.getElementById('logForm');
+function updateLogSev() {
+  const n = Number(logForm.severity.value);
+  document.getElementById('logSevOut').textContent = `${n}/10 · ${sevWord(n)}`;
+}
+logForm.severity.addEventListener('input', updateLogSev);
+document.getElementById('logCancel').addEventListener('click', () => logDlg.close());
+logForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const p = S.problems.find((x) => x.id === loggingId);
+  if (!p) return;
+  const entry = { id: crypto.randomUUID(), date: logForm.date.value || today(), severity: Number(logForm.severity.value), note: logForm.note.value };
+  const isLatest = !(p.log || []).some((l) => l.date > entry.date);
+  try {
+    await saveProblem(p, { log: [entry, ...(p.log || [])], ...(isLatest ? { severity: entry.severity } : {}) }, 'Update logged');
+    logDlg.close();
+  } catch { /* toast shown */ }
+});
+
+document.getElementById('list').addEventListener('click', async (e) => {
+  const t = e.target.closest('button');
+  if (!t) return;
+  const card = t.closest('[data-id]');
+  const p = card && S.problems.find((x) => x.id === card.dataset.id);
+  if (!p) return;
+  try {
+    if (t.dataset.edit) openDialog(p);
+    else if (t.dataset.log) {
+      loggingId = p.id;
+      logForm.reset();
+      logForm.date.value = today();
+      logForm.severity.value = p.severity;
+      updateLogSev();
+      document.getElementById('logFor').textContent = p.title;
+      logDlg.showModal();
+      logForm.note.focus();
+    } else if (t.dataset.resolve) {
+      await saveProblem(p, { status: 'resolved', resolvedOn: today(), severity: 0, log: [{ id: crypto.randomUUID(), date: today(), severity: 0, note: 'Resolved' }, ...(p.log || [])] }, 'Marked resolved');
+    } else if (t.dataset.reopen) {
+      await saveProblem(p, { status: 'recurring', resolvedOn: '', log: [{ id: crypto.randomUUID(), date: today(), severity: Math.max(p.severity, 3), note: 'Came back' }, ...(p.log || [])], severity: Math.max(p.severity, 3) }, 'Reopened');
+    } else if (t.dataset.dellog) {
+      if (!confirm('Remove this log entry?')) return;
+      await saveProblem(p, { log: p.log.filter((l) => l.id !== t.dataset.dellog) }, 'Log entry removed');
+    }
+  } catch { /* toast shown */ }
+});
+
+// ---- Quick add, filters --------------------------------------------------------
+document.getElementById('quickForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const title = document.getElementById('quickTitle').value.trim();
+  openDialog(null, title ? { title } : {});
+  document.getElementById('quickTitle').value = '';
+});
+document.getElementById('suggest').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-suggest]');
+  if (b) openDialog(null, { title: b.dataset.suggest, category: b.dataset.cat });
+});
+document.getElementById('statusFilter').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sf]');
+  if (b) { filt.status = b.dataset.sf; renderFilters(); renderList(); }
+});
+document.getElementById('catFilter').addEventListener('change', (e) => { filt.cat = e.target.value; renderList(); });
+document.getElementById('sortBy').addEventListener('change', (e) => { filt.sort = e.target.value; renderList(); });
+document.getElementById('q').addEventListener('input', (e) => { filt.q = e.target.value; renderList(); });
+
+document.getElementById('syncNow').addEventListener('click', async () => {
+  try {
+    const r = await call('/sync', { method: 'POST' });
+    if (r) { Object.assign(S, { problems: r.problems, categories: r.categories }); renderAll(); toast(S.drive?.ok ? 'Up to date with Google Drive' : 'Sync attempted, see status above'); }
+  } catch { /* toast shown */ }
+});
+
+// ---- Categories ------------------------------------------------------------------
+const catDlg = document.getElementById('catDlg');
+function catRow(v) {
+  return `<div class="r"><input type="text" value="${esc(v)}" data-orig="${esc(v)}" maxlength="60" aria-label="Category name" /><button type="button" class="btn small ghost danger" data-rmcat aria-label="Remove">×</button></div>`;
+}
+document.getElementById('manageCats').addEventListener('click', () => {
+  document.getElementById('catList').innerHTML = S.categories.map(catRow).join('');
+  catDlg.showModal();
+});
+document.getElementById('addCat').addEventListener('click', () => {
+  document.getElementById('catList').insertAdjacentHTML('beforeend', catRow(''));
+  document.querySelector('#catList .r:last-child input').focus();
+});
+document.getElementById('catList').addEventListener('click', (e) => { if (e.target.closest('[data-rmcat]')) e.target.closest('.r').remove(); });
+document.getElementById('catCancel').addEventListener('click', () => catDlg.close());
+document.getElementById('catForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const rows = [...document.querySelectorAll('#catList input')];
+  const cats = rows.map((i) => i.value.trim()).filter(Boolean);
+  const renames = rows.filter((i) => i.dataset.orig && i.value.trim() && i.value.trim() !== i.dataset.orig);
+  try {
+    // Renames: add new names first, move problems over, then save the final list.
+    if (renames.length) {
+      const r1 = await call('/categories', { method: 'PUT', body: { categories: [...new Set([...S.categories, ...cats])] } });
+      if (!r1) return;
+      S.categories = r1.categories;
+      for (const i of renames) {
+        for (const p of S.problems.filter((x) => x.category === i.dataset.orig)) {
+          const r = await call(`/problems/${p.id}`, { method: 'PUT', body: { problem: { ...p, category: i.value.trim() } } });
+          if (r) Object.assign(p, r.problem);
+        }
+      }
+    }
+    const r = await call('/categories', { method: 'PUT', body: { categories: cats } }, 'Categories saved');
+    if (!r) return;
+    S.categories = r.categories;
+    catDlg.close();
+    renderAll();
+  } catch { renderAll(); }
+});
+
+// ---- Export & doctor summary ---------------------------------------------------
+function csvCell(v) {
+  let s = v == null ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // stop spreadsheets running it as a formula
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+document.getElementById('exportCsv').addEventListener('click', () => {
+  const head = ['Title', 'Category', 'Status', 'Severity', 'Started', 'Resolved', 'Frequency', 'When', 'Where', 'Triggers', 'What helps', 'Medicines', 'Doctor / plan', 'Related tests', 'Tags', 'Notes', 'Log'];
+  const rows = S.problems.map((p) => [p.title, p.category, p.status, p.severity, p.onset, p.resolvedOn, p.frequency, p.timeOfDay, p.bodyArea, p.triggers, p.relievers, p.medicines, p.doctor,
+    (p.markers || []).join(' '), (p.tags || []).join(' '), p.notes, (p.log || []).map((l) => `${l.date} [${l.severity}/10] ${l.note}`).join(' | ')]);
+  const blob = new Blob(['﻿' + [head, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `health-problems-${today()}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+document.getElementById('printBtn').addEventListener('click', () => {
+  const open = S.problems.filter((p) => p.status !== 'resolved').sort((a, b) => b.severity - a.severity);
+  const resolved = S.problems.filter((p) => p.status === 'resolved');
+  const row = (p) => `<tr><td><b>${esc(p.title)}</b><br>${esc(p.category)}</td><td>${p.severity}/10<br>${esc(STATUS_LABEL[p.status])}</td>
+    <td>${esc(p.onset ? `${fmtDate(p.onset)} (${since(p.onset)})` : '')}<br>${esc(FREQ_LABEL[p.frequency] || '')} ${esc(TIME_LABEL[p.timeOfDay] && p.timeOfDay ? '· ' + TIME_LABEL[p.timeOfDay] : '')}</td>
+    <td>${[p.bodyArea && `Where: ${p.bodyArea}`, p.triggers && `Worse: ${p.triggers}`, p.relievers && `Better: ${p.relievers}`, p.medicines && `Tried: ${p.medicines}`, p.notes].filter(Boolean).map(esc).join('<br>')}</td></tr>`;
+  document.getElementById('printSummary').innerHTML = `
+    <h2>Health problems: summary for my doctor</h2><p>Printed ${esc(fmtDate(today()))}. ${open.length} open problem(s).</p>
+    <table><thead><tr><th>Problem</th><th>Severity / status</th><th>Since / how often</th><th>Details</th></tr></thead><tbody>${open.map(row).join('')}</tbody></table>
+    ${resolved.length ? `<h2>Resolved</h2><table><tbody>${resolved.map(row).join('')}</tbody></table>` : ''}`;
+  print();
+});
+
+// ---- Start -----------------------------------------------------------------------
+(async () => {
+  try {
+    const r = await api('/problems');
+    Object.assign(S, r);
+    showDrive(S.drive);
+    renderAll();
+    if (new URLSearchParams(location.search).get('add') === '1') openDialog(null);
+  } catch (e) {
+    showDrive(null);
+    document.getElementById('list').innerHTML = `<div class="card empty">${esc(e.message)}</div>`;
+  }
+  try {
+    const d = await (await fetch('data/health-data.json', { credentials: 'same-origin' })).json();
+    markers = d.markers.filter((m) => d.reports.some((rep) => rep.values[m.key] != null));
+    renderList();
+  } catch { /* lab data optional */ }
+})();
+</script>
+</body>
+</html>

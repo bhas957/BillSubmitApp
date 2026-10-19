@@ -23,3 +23,11 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# My Health Reports — personal medical data, never commit (this repo is public)
+public/MyHealthReports/pdf/
+public/MyHealthReports/data/
+public/MyHealthReports/guide.html
+health-problems.json
+health-problems.json.tmp
+health-problems.json.bak

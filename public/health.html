@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>My Health Reports</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --paper: #f6f4ee; --paper-edge: #eae6d9; --ink: #211f1a; --ink-soft: #6b6558; --line: #cdc6b3; --accent: #3b4fb5; --accent-ink: #2c3b8c; --bad: #b02a2a; --page: linear-gradient(180deg, #e9e6dc 0%, #dedad0 100%); --field: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --paper: #1c1c1a; --paper-edge: #2a2a27; --ink: #f0efec; --ink-soft: #c3c2b7; --line: #3a3a35; --accent: #8f9cf0; --accent-ink: #aab4f5; --bad: #e66767; --page: #121210; --field: #1a1a19; }
+  }
+  :root[data-theme="dark"] { --paper: #1c1c1a; --paper-edge: #2a2a27; --ink: #f0efec; --ink-soft: #c3c2b7; --line: #3a3a35; --accent: #8f9cf0; --accent-ink: #aab4f5; --bad: #e66767; --page: #121210; --field: #1a1a19; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--page); font-family: 'Inter', system-ui, sans-serif; color: var(--ink); display: flex; justify-content: center; align-items: flex-start; padding: 64px 16px; }
+  .box { width: 100%; max-width: 380px; background: var(--paper); border: 1px solid var(--paper-edge); box-shadow: 0 18px 40px -24px rgba(30, 28, 22, 0.5), 0 2px 0 var(--paper-edge); padding: 28px 24px; }
+  .icon { width: 38px; height: 38px; color: var(--accent-ink); margin-bottom: 10px; }
+  h1 { font-family: 'IBM Plex Mono', monospace; font-size: 16px; letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 6px; }
+  p { margin: 0 0 20px; color: var(--ink-soft); font-size: 13px; }
+  label.f { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 6px; }
+  .pw { display: flex; gap: 6px; }
+  input[type="password"], input[type="text"] { flex: 1; width: 100%; padding: 10px; font: inherit; color: inherit; background: var(--field); border: 1px solid var(--line); border-radius: 2px; min-height: 42px; }
+  input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .show { border: 1px solid var(--line); background: transparent; color: var(--ink-soft); border-radius: 2px; padding: 0 10px; cursor: pointer; font-size: 12px; }
+  .remember { display: flex; align-items: center; gap: 8px; margin: 14px 0 18px; font-size: 13px; color: var(--ink-soft); }
+  .go { width: 100%; padding: 12px; border: 0; border-radius: 2px; background: var(--accent); color: #fff; font-family: 'IBM Plex Mono', monospace; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; min-height: 44px; }
+  :root[data-theme="dark"] .go { color: #111; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .go { color: #111; } }
+  .go:disabled { opacity: 0.6; }
+  .err { color: var(--bad); font-size: 13px; min-height: 20px; margin-top: 10px; }
+  .back { display: inline-block; margin-top: 18px; font-size: 13px; color: var(--ink-soft); }
+</style>
+<script>
+  try { const t = localStorage.getItem('health-theme'); if (t) document.documentElement.setAttribute('data-theme', t); } catch {}
+</script>
+</head>
+<body>
+<form class="box" id="form" autocomplete="on">
+  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="1.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14v3"/></svg>
+  <h1>My Health Reports</h1>
+  <p>Private area. Enter your password to see your reports, trends, guide and problem log.</p>
+  <label class="f" for="pw">Password</label>
+  <div class="pw">
+    <input id="pw" name="password" type="password" autocomplete="current-password" required autofocus />
+    <button type="button" class="show" id="show" aria-label="Show password">Show</button>
+  </div>
+  <label class="remember"><input type="checkbox" id="remember" /> Keep me signed in on this device for 30 days</label>
+  <button class="go" id="go" type="submit">Unlock</button>
+  <div class="err" id="err" role="alert"></div>
+  <a class="back" href="/">&larr; All tools</a>
+</form>
+<script>
+  const params = new URLSearchParams(location.search);
+  const rawNext = params.get('next') || '';
+  const next = /^\/MyHealthReports\/[^\s\\]*$/i.test(rawNext) && !rawNext.includes('//') ? rawNext : '/MyHealthReports/';
+
+  fetch('/api/health/session', { credentials: 'same-origin' })
+    .then((r) => r.json())
+    .then((s) => {
+      if (s.authed) location.replace(next);
+      else if (!s.configured) document.getElementById('err').textContent = 'The server has no HEALTH_PASSWORD set yet (add it to .env and restart).';
+    })
+    .catch(() => {});
+
+  document.getElementById('show').addEventListener('click', (e) => {
+    const pw = document.getElementById('pw');
+    const showing = pw.type === 'text';
+    pw.type = showing ? 'password' : 'text';
+    e.currentTarget.textContent = showing ? 'Show' : 'Hide';
+    e.currentTarget.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  });
+
+  document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const go = document.getElementById('go');
+    const err = document.getElementById('err');
+    go.disabled = true;
+    err.textContent = '';
+    try {
+      const res = await fetch('/api/health/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: document.getElementById('pw').value, remember: document.getElementById('remember').checked }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+      location.replace(next);
+    } catch (ex) {
+      err.textContent = ex.message;
+      document.getElementById('pw').select();
+    } finally {
+      go.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

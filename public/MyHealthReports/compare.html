@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Health Trends</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .controls .search { flex: 1 1 200px; max-width: 280px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+  .seg button { border: 0; background: var(--paper); padding: 7px 14px; cursor: pointer; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; min-height: 38px; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .seg button[aria-pressed="true"] { color: #111; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg button[aria-pressed="true"] { color: #111; } }
+  .cats { margin-bottom: 14px; }
+  .key { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--ink-soft); margin-bottom: 18px; align-items: center; }
+  .key i { display: inline-block; vertical-align: -2px; margin-right: 5px; }
+  .key .k-band { width: 18px; height: 10px; background: var(--band); border-top: 1px solid var(--band-edge); border-bottom: 1px solid var(--band-edge); }
+  .key .k-line { width: 18px; height: 2px; background: var(--series); vertical-align: 3px; }
+  .key .k-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--series); }
+  .key .k-bad { width: 9px; height: 9px; border-radius: 50%; background: var(--critical); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .cat-head { grid-column: 1 / -1; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); margin: 10px 0 -4px; }
+  .mcard { padding: 14px 14px 10px; position: relative; min-width: 0; }
+  .mcard.wide { grid-column: 1 / -1; }
+  .mhead { display: flex; align-items: flex-start; gap: 8px; }
+  .mname { font-weight: 600; font-size: 14px; line-height: 1.3; }
+  .munit { font-size: 12px; color: var(--muted); }
+  .mhead .expand { margin-left: auto; flex: none; }
+  .mvalue { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+  .mvalue .v { font-size: 24px; font-weight: 600; }
+  .mdelta { font-size: 12px; color: var(--ink-soft); }
+  .mdelta b { font-weight: 600; }
+  .mdelta .better { color: var(--good-ink); }
+  .mdelta .worse { color: var(--critical-ink); }
+  .range { font-size: 12px; color: var(--muted); }
+  .chart { position: relative; margin-top: 6px; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .chart .hit { cursor: crosshair; }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 5; background: var(--paper); border: 1px solid var(--line);
+    box-shadow: var(--shadow); padding: 7px 10px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%);
+  }
+  .tip .tv { font-size: 14px; font-weight: 600; }
+  .history { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+  .history div { font-size: 12px; border: 1px solid var(--line); padding: 6px 8px; }
+  .history .d { color: var(--muted); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--paper-edge); background: var(--paper); box-shadow: var(--shadow); }
+  table.trend { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.trend th, table.trend td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  table.trend th:first-child, table.trend td:first-child { text-align: left; position: sticky; left: 0; background: var(--paper); z-index: 1; white-space: normal; min-width: 170px; }
+  table.trend thead th { font-family: var(--mono); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-soft); background: var(--paper); }
+  table.trend td.bad { background: var(--bad-bg); color: var(--critical-ink); font-weight: 600; }
+  table.trend tr.group td { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); background: var(--surface); }
+  table.trend td.ref { color: var(--muted); font-size: 12px; }
+  .empty { padding: 30px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / Compare</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title">Compare over time</h1>
+  <p class="lede" id="lede">Loading your reports…</p>
+
+  <div class="controls no-print">
+    <div class="seg" role="group" aria-label="View">
+      <button type="button" data-view="charts" aria-pressed="true">Charts</button>
+      <button type="button" data-view="table" aria-pressed="false">Table</button>
+    </div>
+    <input class="search" type="search" id="search" placeholder="Find a test (e.g. TSH, B12)" aria-label="Find a test" />
+    <button class="btn ghost" type="button" onclick="print()">Print</button>
+  </div>
+  <div class="chips cats no-print" id="cats" role="group" aria-label="Filter by group"></div>
+  <div class="key" id="key">
+    <span><i class="k-band"></i>Normal range</span>
+    <span><i class="k-line"></i>Your value over time</span>
+    <span><i class="k-dot"></i>Within range</span>
+    <span><i class="k-bad"></i>Outside range (▲ high / ▼ low)</span>
+    <span>Hover or tap a chart for exact values.</span>
+  </div>
+
+  <div id="charts" class="grid"></div>
+  <div id="table" class="hidden"></div>
+
+  <p class="disclaimer">Values were read automatically from your PDF reports. If anything looks off, check it against the original report, and correct it in <span class="mono">data/overrides.json</span>, then run <span class="mono">npm run health:build</span>. Ranges are the lab's reference ranges; "optimal" targets shown in the guide may be tighter. This is not a diagnosis.</p>
+</div>
+
+<script>
+const { esc, fmtDate } = window.Health;
+const SPECIAL = { attention: 'Needs attention', all: 'All tests' };
+let DATA = null;
+let state = { view: 'charts', cat: 'attention', q: '', wide: new Set() };
+
+const fmt = (v) => v == null ? '–' : (Math.abs(v) >= 100 ? String(Math.round(v * 10) / 10) : String(+v.toFixed(2)));
+
+function statusOf(m, v) {
+  if (v == null) return null;
+  if (m.low != null && v < m.low) return 'low';
+  if (m.high != null && v > m.high) return 'high';
+  return 'ok';
+}
+function statusPill(s) {
+  if (s === 'high') return '<span class="status high">▲ High</span>';
+  if (s === 'low') return '<span class="status low">▼ Low</span>';
+  if (s === 'ok') return '<span class="status ok">✓ Normal</span>';
+  return '<span class="status none">No data</span>';
+}
+function rangeText(m) {
+  if (m.low != null && m.high != null) return `Normal ${m.low}–${m.high}`;
+  if (m.high != null) return `Normal below ${m.high}`;
+  if (m.low != null) return `Normal above ${m.low}`;
+  return '';
+}
+function series(m) {
+  return DATA.reports.filter((r) => r.values[m.key] != null).map((r) => ({ date: r.date, v: r.values[m.key], partial: r.partial }));
+}
+// Distance outside the range, so "closer to normal" counts as better even while still out of range.
+function badness(m, v) {
+  if (m.low != null && v < m.low) return (m.low - v) / (m.low || 1);
+  if (m.high != null && v > m.high) return (v - m.high) / (m.high || 1);
+  return 0;
+}
+function deltaHtml(m, pts) {
+  if (pts.length < 2) return '<span class="mdelta">First result</span>';
+  const a = pts[pts.length - 2], b = pts[pts.length - 1];
+  const diff = b.v - a.v;
+  const pct = a.v ? (diff / Math.abs(a.v)) * 100 : 0;
+  const before = badness(m, a.v), now = badness(m, b.v);
+  let verdict = '';
+  if (now < before - 1e-9) verdict = '<span class="better">better</span>';
+  else if (now > before + 1e-9) verdict = '<span class="worse">worse</span>';
+  else if (now === 0) verdict = 'still normal';
+  const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '→';
+  return `<span class="mdelta"><b>${arrow} ${diff > 0 ? '+' : ''}${fmt(diff)}</b> (${pct > 0 ? '+' : ''}${pct.toFixed(0)}%) vs ${esc(fmtDate(a.date, { month: 'short', year: '2-digit' }))}${verdict ? ` · ${verdict}` : ''}</span>`;
+}
+
+function needsAttention(m) {
+  return DATA.reports.some((r) => { const s = statusOf(m, r.values[m.key]); return s && s !== 'ok'; });
+}
+function visibleMarkers() {
+  const q = state.q.trim().toLowerCase();
+  return DATA.markers.filter((m) => {
+    if (!DATA.reports.some((r) => r.values[m.key] != null)) return false;
+    if (q && !(`${m.name} ${m.key} ${m.cat}`.toLowerCase().includes(q))) return false;
+    if (state.cat === 'attention') return needsAttention(m);
+    if (state.cat === 'all') return true;
+    return m.cat === state.cat;
+  });
+}
+
+// ---- Chart -------------------------------------------------------------------
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function niceTicks(lo, hi, n = 3) {
+  const span = hi - lo || 1;
+  const step0 = span / n;
+  const mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((s) => s >= step0);
+  const ticks = [];
+  for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) ticks.push(+t.toFixed(10));
+  return ticks;
+}
+
+function drawChart(holder, m, wide) {
+  const pts = series(m);
+  const W = Math.max(240, holder.clientWidth);
+  const H = wide ? 260 : 150;
+  const pad = { l: 40, r: 44, t: 12, b: 24 };
+  const t0 = +new Date(DATA.reports[0].date), t1 = +new Date(DATA.reports[DATA.reports.length - 1].date);
+  const x = (d) => pad.l + ((+new Date(d) - t0) / ((t1 - t0) || 1)) * (W - pad.l - pad.r);
+
+  const vals = pts.map((p) => p.v);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (m.low != null) lo = Math.min(lo, m.low);
+  if (m.high != null) hi = Math.max(hi, m.high);
+  // One-sided ranges: show some of the normal zone even when every value is outside it.
+  if (m.low == null && m.high != null) lo = Math.min(lo, m.high * 0.75);
+  if (m.high == null && m.low != null) hi = Math.max(hi, m.low * 1.25);
+  const span = (hi - lo) || Math.abs(hi) || 1;
+  lo -= span * 0.12; hi += span * 0.12;
+  if (lo < 0 && Math.min(...vals) >= 0) lo = 0;
+  const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+
+  const surface = css('--paper');
+  const parts = [];
+  // normal-range band
+  const bTop = m.high != null ? y(m.high) : pad.t;
+  const bBot = m.low != null ? y(m.low) : H - pad.b;
+  parts.push(`<rect x="${pad.l}" y="${bTop}" width="${W - pad.l - pad.r}" height="${Math.max(0, bBot - bTop)}" fill="var(--band)"/>`);
+  if (m.high != null) parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${bTop}" y2="${bTop}" stroke="var(--band-edge)" stroke-width="1"/>`);
+  if (m.low != null) parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${bBot}" y2="${bBot}" stroke="var(--band-edge)" stroke-width="1"/>`);
+  // grid + y ticks
+  for (const t of niceTicks(lo, hi, wide ? 5 : 3)) {
+    parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>`);
+    parts.push(`<text x="${pad.l - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10" fill="var(--muted)" class="num">${fmt(t)}</text>`);
+  }
+  // x ticks: one per year
+  const years = [...new Set(DATA.reports.map((r) => r.date.slice(0, 4)))];
+  const yearTicks = [];
+  for (const yr of years) {
+    const xx = Math.max(pad.l, x(`${yr}-01-01`));
+    if (xx > W - pad.r) continue;
+    if (yearTicks.length && xx - yearTicks[yearTicks.length - 1].xx < 52) yearTicks.pop(); // keep the later year when two collide
+    yearTicks.push({ yr, xx });
+  }
+  for (const { yr, xx } of yearTicks) {
+    parts.push(`<text x="${xx}" y="${H - 6}" font-size="10" fill="var(--muted)" text-anchor="${xx === pad.l ? 'start' : 'middle'}">${yr}</text>`);
+  }
+  parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${H - pad.b}" y2="${H - pad.b}" stroke="var(--axis)" stroke-width="1"/>`);
+  // line
+  if (pts.length > 1) {
+    parts.push(`<polyline fill="none" stroke="var(--series)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${pts.map((p) => `${x(p.date)},${y(p.v)}`).join(' ')}"/>`);
+  }
+  // dots (surface ring), out-of-range dots in the critical status colour
+  for (const p of pts) {
+    const bad = statusOf(m, p.v) !== 'ok';
+    parts.push(`<circle cx="${x(p.date)}" cy="${y(p.v)}" r="4.5" fill="${bad ? 'var(--critical)' : 'var(--series)'}" stroke="${surface}" stroke-width="2"/>`);
+  }
+  // end label
+  const last = pts[pts.length - 1];
+  parts.push(`<text x="${x(last.date) + 8}" y="${y(last.v) + 4}" font-size="11" font-weight="600" fill="var(--ink)">${fmt(last.v)}</text>`);
+  // crosshair (hidden) + hit area
+  parts.push(`<line class="xh" x1="0" x2="0" y1="${pad.t}" y2="${H - pad.b}" stroke="var(--axis)" stroke-width="1" visibility="hidden"/>`);
+  parts.push(`<rect class="hit" x="${pad.l - 10}" y="0" width="${W - pad.l - pad.r + 20}" height="${H}" fill="transparent"/>`);
+
+  holder.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(m.name)} over time: ${pts.map((p) => `${fmtDate(p.date, { month: 'short', year: 'numeric' })} ${fmt(p.v)}`).join(', ')}">${parts.join('')}</svg><div class="tip hidden"></div>`;
+
+  const svg = holder.querySelector('svg');
+  const tip = holder.querySelector('.tip');
+  const xh = holder.querySelector('.xh');
+  const show = (clientX) => {
+    const r = svg.getBoundingClientRect();
+    const mx = clientX - r.left;
+    let best = pts[0];
+    for (const p of pts) if (Math.abs(x(p.date) - mx) < Math.abs(x(best.date) - mx)) best = p;
+    const px = x(best.date), py = y(best.v);
+    xh.setAttribute('x1', px); xh.setAttribute('x2', px); xh.setAttribute('visibility', 'visible');
+    const s = statusOf(m, best.v);
+    tip.innerHTML = `<div class="muted">${esc(fmtDate(best.date))}${best.partial ? ' · interim' : ''}</div><div class="tv num">${fmt(best.v)} <span class="muted">${esc(m.unit)}</span></div><div>${statusPill(s)}</div>`;
+    tip.classList.remove('hidden');
+    const tw = tip.offsetWidth;
+    const left = Math.min(Math.max(px, tw / 2), W - tw / 2);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${Math.max(py - 10, tip.offsetHeight)}px`;
+  };
+  const hide = () => { tip.classList.add('hidden'); xh.setAttribute('visibility', 'hidden'); };
+  svg.addEventListener('pointermove', (e) => show(e.clientX));
+  svg.addEventListener('pointerdown', (e) => show(e.clientX));
+  svg.addEventListener('pointerleave', hide);
+}
+
+// ---- Views -------------------------------------------------------------------
+function renderCats() {
+  const cats = [...new Set(DATA.markers.map((m) => m.cat))];
+  const opts = [['attention', SPECIAL.attention], ['all', SPECIAL.all], ...cats.map((c) => [c, c])];
+  document.getElementById('cats').innerHTML = opts.map(([k, label]) =>
+    `<button type="button" class="chip" data-cat="${esc(k)}" aria-pressed="${state.cat === k}">${esc(label)}</button>`).join('');
+}
+
+function renderCharts() {
+  const el = document.getElementById('charts');
+  const ms = visibleMarkers();
+  if (!ms.length) { el.innerHTML = '<div class="empty card" style="grid-column:1/-1">No tests match.</div>'; return; }
+  let html = '';
+  let lastCat = null;
+  for (const m of ms) {
+    if (m.cat !== lastCat && (state.cat === 'all' || state.cat === 'attention')) { html += `<div class="cat-head">${esc(m.cat)}</div>`; lastCat = m.cat; }
+    const pts = series(m);
+    const last = pts[pts.length - 1];
+    const wide = state.wide.has(m.key);
+    html += `<article class="card mcard${wide ? ' wide' : ''}" data-key="${m.key}">
+      <div class="mhead"><div><div class="mname">${esc(m.name)}</div><div class="munit">${esc(m.unit || 'ratio')}${m.derived ? ' · calculated' : ''}</div></div>
+      <button type="button" class="btn small ghost expand no-print" data-expand="${m.key}" aria-expanded="${wide}">${wide ? 'Smaller' : 'Expand'}</button></div>
+      <div class="mvalue"><span class="v num">${fmt(last.v)}</span>${statusPill(statusOf(m, last.v))}<span class="range">${esc(rangeText(m))}${m.optimal ? ` · optimal ${m.optimal[0] ? `${m.optimal[0]}–` : 'below '}${m.optimal[1]}` : ''}</span></div>
+      ${deltaHtml(m, pts)}
+      <div class="chart" data-chart="${m.key}"></div>
+      ${wide ? `<div class="history">${pts.map((p) => `<div><div class="d">${esc(fmtDate(p.date, { month: 'short', year: 'numeric' }))}</div><b class="num">${fmt(p.v)}</b> ${statusOf(m, p.v) === 'high' ? '▲' : statusOf(m, p.v) === 'low' ? '▼' : ''}</div>`).join('')}</div>` : ''}
+      ${pts.length === 1 ? '<div class="note">Only measured once so far.</div>' : ''}
+    </article>`;
+  }
+  el.innerHTML = html;
+  drawAll();
+}
+
+function drawAll() {
+  document.querySelectorAll('[data-chart]').forEach((h) => {
+    const m = DATA.markers.find((x) => x.key === h.dataset.chart);
+    drawChart(h, m, state.wide.has(m.key));
+  });
+}
+
+function renderTable() {
+  const ms = visibleMarkers();
+  const el = document.getElementById('table');
+  if (!ms.length) { el.innerHTML = '<div class="empty card">No tests match.</div>'; return; }
+  const head = `<tr><th>Test</th>${DATA.reports.map((r) => `<th>${esc(fmtDate(r.date, { month: 'short', year: 'numeric' }))}${r.partial ? '*' : ''}</th>`).join('')}<th>Normal range</th></tr>`;
+  let body = '';
+  let lastCat = null;
+  for (const m of ms) {
+    if (m.cat !== lastCat) { body += `<tr class="group"><td colspan="${DATA.reports.length + 2}">${esc(m.cat)}</td></tr>`; lastCat = m.cat; }
+    body += `<tr><td>${esc(m.name)} <span class="muted">${esc(m.unit)}</span></td>${DATA.reports.map((r) => {
+      const v = r.values[m.key];
+      const s = statusOf(m, v);
+      const icon = s === 'high' ? ' ▲' : s === 'low' ? ' ▼' : '';
+      return `<td class="num${s && s !== 'ok' ? ' bad' : ''}"${s && s !== 'ok' ? ` title="${s === 'high' ? 'High' : 'Low'}"` : ''}>${v == null ? '<span class="muted">–</span>' : fmt(v) + icon}</td>`;
+    }).join('')}<td class="ref">${esc(rangeText(m).replace('Normal ', ''))}</td></tr>`;
+  }
+  el.innerHTML = `<div class="table-wrap"><table class="trend"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    <p class="note">▲ high · ▼ low · – not tested that time${DATA.reports.some((r) => r.partial) ? ' · * interim report, some results pending' : ''}</p>`;
+}
+
+function render() {
+  renderCats();
+  const charts = state.view === 'charts';
+  document.getElementById('charts').classList.toggle('hidden', !charts);
+  document.getElementById('key').classList.toggle('hidden', !charts);
+  document.getElementById('table').classList.toggle('hidden', charts);
+  document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.view === state.view));
+  if (charts) renderCharts(); else renderTable();
+}
+
+document.addEventListener('click', (e) => {
+  const cat = e.target.closest('[data-cat]');
+  if (cat) { state.cat = cat.dataset.cat; render(); return; }
+  const v = e.target.closest('[data-view]');
+  if (v) { state.view = v.dataset.view; render(); return; }
+  const ex = e.target.closest('[data-expand]');
+  if (ex) {
+    const k = ex.dataset.expand;
+    state.wide.has(k) ? state.wide.delete(k) : state.wide.add(k);
+    renderCharts();
+    document.querySelector(`[data-key="${k}"]`)?.scrollIntoView({ block: 'nearest' });
+  }
+});
+document.getElementById('search').addEventListener('input', (e) => {
+  state.q = e.target.value;
+  if (state.q && state.cat === 'attention') state.cat = 'all';
+  render();
+});
+let resizeTimer;
+addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => state.view === 'charts' && drawAll(), 150); });
+document.addEventListener('themechange', () => state.view === 'charts' && drawAll());
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.view === 'charts' && drawAll());
+
+(async () => {
+  try {
+    const res = await fetch('data/health-data.json', { credentials: 'same-origin', cache: 'no-store' });
+    if (res.status === 401) { location.href = `/health.html?next=${encodeURIComponent(location.pathname)}`; return; }
+    if (!res.ok) throw new Error('No data yet — run "npm run health:build" on the server to read your PDFs.');
+    DATA = await res.json();
+    const first = DATA.reports[0], last = DATA.reports[DATA.reports.length - 1];
+    const attention = DATA.markers.filter((m) => DATA.reports.some((r) => r.values[m.key] != null) && needsAttention(m)).length;
+    document.getElementById('lede').textContent =
+      `${DATA.reports.length} blood reports from ${fmtDate(first.date)} to ${fmtDate(last.date)}. Showing the ${attention} tests that were outside the normal range at least once. Pick a group or "All tests" to see everything.`;
+    render();
+  } catch (e) {
+    document.getElementById('lede').textContent = e.message;
+  }
+})();
+</script>
+</body>
+</html>

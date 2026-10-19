@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "ocr:fixtures": "node dev-tools/ocr-robustness-fixtures/src/index.js",
-    "bible:fetch": "node dev-tools/bible/fetch-irv.js"
+    "bible:fetch": "node dev-tools/bible/fetch-irv.js",
+    "health:build": "node dev-tools/health/extract-reports.js"
   },
   "dependencies": {
     "csv-parse": "^5.5.6",

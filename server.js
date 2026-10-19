@@ -44,12 +44,19 @@ app.use((req, res, next) => {
   }
   next();
 });
+const health = require('./healthRoutes')({
+  getDriveClient: getDriveClientOrThrow,
+  folderId: process.env.HEALTH_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID,
+  publicDir: path.join(__dirname, 'public'),
+});
+app.use(health.guard); // must run before express.static: keeps /MyHealthReports behind the login
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 app.use('/api/bible', require('./bibleRoutes')({
   getDriveClient: getDriveClientOrThrow,
   folderId: process.env.BIBLE_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID,
 }));
+app.use('/api/health', health.router);
 
 // Keep uploads in memory; bills are small images/PDFs, not huge files.
 const upload = multer({
@@ -103,7 +110,7 @@ oauth2Client.on('tokens', (tokens) => {
 
 // Whitelist of pages the OAuth flow is allowed to bounce back to, so the
 // callback's redirect target can't be hijacked into an open redirect.
-const ALLOWED_OAUTH_REDIRECTS = new Set(['/', '/bill.html', '/ocr.html', '/bible.html']);
+const ALLOWED_OAUTH_REDIRECTS = new Set(['/', '/bill.html', '/ocr.html', '/bible.html', '/MyHealthReports/note-my-health-problems.html']);
 
 function safeOAuthRedirect(value) {
   return ALLOWED_OAUTH_REDIRECTS.has(value) ? value : '/';

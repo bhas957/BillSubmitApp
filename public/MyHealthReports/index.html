@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>My Health Reports</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 26px; }
+  @media (max-width: 820px) { .tools { grid-template-columns: 1fr; } }
+  a.tool { display: block; text-decoration: none; color: var(--ink); position: relative; transition: transform .08s ease; }
+  a.tool:hover { transform: translateY(-2px); }
+  a.tool:hover .tool-title { color: var(--accent-ink); }
+  .tool svg { width: 32px; height: 32px; color: var(--accent-ink); margin-bottom: 10px; }
+  .tool-title { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
+  .tool-desc { font-size: 13px; color: var(--ink-soft); margin-top: 6px; }
+  .tool-meta { margin-top: 12px; font-size: 13px; }
+  .arrow { position: absolute; top: 18px; right: 18px; font-family: var(--mono); color: var(--ink-soft); }
+
+  .snapshot { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+  @media (max-width: 820px) { .snapshot { grid-template-columns: repeat(2, 1fr); } }
+  .stat .label { font-size: 12px; color: var(--ink-soft); }
+  .stat .value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+  .stat .sub { font-size: 12px; color: var(--muted); }
+
+  h2.section { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 12px; color: var(--ink-soft); }
+  .files { list-style: none; margin: 0; padding: 0; }
+  .files li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; flex-wrap: wrap; }
+  .files li:last-child { border-bottom: 0; }
+  .files .tag { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border: 1px solid var(--line); padding: 1px 6px; color: var(--ink-soft); }
+  .files a { text-decoration: none; word-break: break-word; }
+  .files a:hover { text-decoration: underline; }
+  .files .size { margin-left: auto; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / My Health Reports</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title">My Health Reports</h1>
+  <p class="lede" id="lede">Your lab results, scans and health notes in one private place.</p>
+
+  <div class="snapshot" id="snapshot"></div>
+
+  <div class="tools">
+    <a class="card tool" href="compare.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3.5 20.5h17"/><path d="M5 16l4.5-5 3.5 3 6-7"/><circle cx="19" cy="7" r="1.4"/></svg>
+      <div class="tool-title">Compare over time</div>
+      <div class="tool-desc">Every blood marker from all your reports, charted against its normal range, with what improved and what got worse.</div>
+      <div class="tool-meta soft" id="metaCompare"></div>
+    </a>
+    <a class="card tool" href="guide.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 3.5h10l4 4v13H5z"/><path d="M15 3.5v4h4"/><path d="M8 11.5h8M8 14.5h8M8 17.5h5"/></svg>
+      <div class="tool-title">My health guide</div>
+      <div class="tool-desc">What your results mean in plain words, the action plan, diet and exercise, supplements to ask about, and the retest schedule.</div>
+      <div class="tool-meta soft">Printable. Take it to your doctor.</div>
+    </a>
+    <a class="card tool" href="note-my-health-problems.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 4.5h14v16H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/><path d="M9 2.5v4M15 2.5v4"/></svg>
+      <div class="tool-title">Note my health problems</div>
+      <div class="tool-desc">Log symptoms by category, severity and date, track how they change, and keep it synced to Google Drive.</div>
+      <div class="tool-meta soft" id="metaProblems"></div>
+    </a>
+  </div>
+
+  <div class="card">
+    <h2 class="section">Original reports</h2>
+    <ul class="files" id="files"><li class="muted">Loading…</li></ul>
+  </div>
+
+  <p class="disclaimer">This app organises your own reports for you and your doctor. It is not a diagnosis. Don't start or stop any medicine based on it.</p>
+</div>
+
+<script>
+  const { api, esc, fmtDate } = window.Health;
+
+  function statusOf(m, v) {
+    if (v == null) return null;
+    if (m.low != null && v < m.low) return 'low';
+    if (m.high != null && v > m.high) return 'high';
+    return 'ok';
+  }
+
+  async function loadSnapshot() {
+    try {
+      const res = await fetch('data/health-data.json', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error();
+      const d = await res.json();
+      const latest = d.reports[d.reports.length - 1];
+      const prev = d.reports[d.reports.length - 2];
+      let out = 0, better = 0, worse = 0;
+      for (const m of d.markers) {
+        const v = latest.values[m.key];
+        if (statusOf(m, v) && statusOf(m, v) !== 'ok') out++;
+        const pv = prev && prev.values[m.key];
+        if (v != null && pv != null) {
+          const before = statusOf(m, pv) !== 'ok', now = statusOf(m, v) !== 'ok';
+          if (before && !now) better++;
+          if (!before && now) worse++;
+        }
+      }
+      document.getElementById('snapshot').innerHTML = `
+        <div class="card stat"><div class="label">Latest blood test</div><div class="value">${esc(fmtDate(latest.date, { month: 'short', year: 'numeric' }))}</div><div class="sub">${Object.keys(latest.values).length} markers${latest.partial ? ' · interim report' : ''}</div></div>
+        <div class="card stat"><div class="label">Outside normal range</div><div class="value">${out}</div><div class="sub">in the latest report</div></div>
+        <div class="card stat"><div class="label">Back to normal</div><div class="value">${better}</div><div class="sub">since ${esc(fmtDate(prev.date, { month: 'short', year: 'numeric' }))}</div></div>
+        <div class="card stat"><div class="label">Newly out of range</div><div class="value">${worse}</div><div class="sub">since ${esc(fmtDate(prev.date, { month: 'short', year: 'numeric' }))}</div></div>`;
+      document.getElementById('metaCompare').textContent = `${d.reports.length} blood reports · ${fmtDate(d.reports[0].date, { month: 'short', year: 'numeric' })} – ${fmtDate(latest.date, { month: 'short', year: 'numeric' })}`;
+    } catch {
+      document.getElementById('snapshot').classList.add('hidden');
+      document.getElementById('metaCompare').textContent = 'Run "npm run health:build" to read your PDFs.';
+    }
+  }
+
+  async function loadProblems() {
+    try {
+      const { problems, drive } = await api('/problems');
+      const open = problems.filter((p) => p.status !== 'resolved').length;
+      document.getElementById('metaProblems').textContent =
+        `${open} open · ${problems.length - open} resolved · ${drive.connected ? (drive.ok ? 'synced to Drive' : 'Drive sync pending') : 'Drive not connected'}`;
+    } catch (e) {
+      document.getElementById('metaProblems').textContent = e.message;
+    }
+  }
+
+  async function loadFiles() {
+    const el = document.getElementById('files');
+    try {
+      const { files } = await api('/reports');
+      if (!files.length) { el.innerHTML = '<li class="muted">No files yet. Put PDFs in public/MyHealthReports/pdf.</li>'; return; }
+      files.sort((a, b) => a.folder.localeCompare(b.folder) || b.name.localeCompare(a.name));
+      el.innerHTML = files.map((f) => `
+        <li><span class="tag">${esc(f.folder || 'notes')}</span>
+        <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>
+        <span class="size num">${(f.size / 1024 / 1024).toFixed(f.size > 1048576 ? 1 : 2)} MB</span></li>`).join('');
+    } catch (e) {
+      el.innerHTML = `<li class="muted">${esc(e.message)}</li>`;
+    }
+  }
+
+  loadSnapshot();
+  loadProblems();
+  loadFiles();
+</script>
+</body>
+</html>
