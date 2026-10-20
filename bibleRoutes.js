@@ -597,3 +597,10 @@ module.exports = function createBibleRouter(options = {}) {
   drive = { getClient: options.getDriveClient || null, folderId: options.folderId || null };
   return router;
 };
+
+// Used by the home page's "Sync with Google": re-reads the Drive copy and pushes local changes.
+module.exports.sync = async function sync() {
+  driveVersion = null;
+  await withState();
+  return driveStatus();
+};

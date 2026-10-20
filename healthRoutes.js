@@ -1361,5 +1361,15 @@ module.exports = function healthRoutes({ getDriveClient, getGmailClient, getCale
     res.status(500).json({ error: err.message || 'Server error' });
   });
 
-  return { router, guard: makeGuard(publicDir), driveFiles: serveFromDrive };
+  // Used by the home page's "Sync with Google": drops every Drive cache so
+  // reports, records and the problems log are re-read from Drive.
+  async function sync() {
+    driveVersion = null;
+    combinedCache = null;
+    tree.clearCache();
+    await withState();
+    return driveStatus();
+  }
+
+  return { router, guard: makeGuard(publicDir), driveFiles: serveFromDrive, sync };
 };

@@ -114,6 +114,50 @@
     font-size: 16px;
   }
   .card:hover .card-arrow { color: var(--accent-ink); }
+
+  .sync {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--paper);
+    border: 1px solid var(--paper-edge);
+    padding: 12px 14px;
+    margin-bottom: 16px;
+  }
+  .sync-status {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+  }
+  .sync-status .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: var(--line);
+  }
+  .sync-status.ok .dot { background: #2f8a4c; }
+  .sync-status.bad .dot { background: #b8432f; }
+  .sync-btn {
+    flex: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: var(--radius);
+    padding: 9px 12px;
+    cursor: pointer;
+  }
+  .sync-btn:hover { background: var(--accent-ink); }
+  .sync-btn:disabled { opacity: 0.6; cursor: wait; }
 </style>
 </head>
 <body>
@@ -123,6 +167,11 @@
     <div class="masthead">Reimbursement</div>
     <div class="subhead">Pick a tool</div>
   </header>
+
+  <div class="sync">
+    <div class="sync-status" id="syncStatus"><span class="dot"></span>Checking Google connection&hellip;</div>
+    <button class="sync-btn" id="syncBtn" type="button">Sync with Google</button>
+  </div>
 
   <div class="cards">
     <a class="card" href="/bill.html">
@@ -162,6 +211,62 @@
     </a>
   </div>
 </div>
+
+<script>
+(() => {
+  const statusEl = document.getElementById('syncStatus');
+  const btn = document.getElementById('syncBtn');
+  const LOGIN = '/auth/google?redirect=/';
+  let connected = false;
+
+  function show(text, kind) {
+    statusEl.className = 'sync-status' + (kind ? ' ' + kind : '');
+    statusEl.innerHTML = '<span class="dot"></span>';
+    statusEl.append(text);
+  }
+
+  async function checkStatus() {
+    try {
+      const s = await (await fetch('/api/auth-status')).json();
+      connected = s.connected;
+      if (s.connected) show('Connected to Google' + (s.email ? ' as ' + s.email : ''), 'ok');
+      else show(s.reason === 'expired' ? 'Google login expired — tap Sync to sign in again.' : 'Not connected to Google — tap Sync to sign in.', 'bad');
+    } catch {
+      show('Could not reach the server.', 'bad');
+    }
+  }
+
+  async function syncAll() {
+    if (!connected) { location.href = LOGIN; return; }
+    btn.disabled = true;
+    show('Syncing with Google Drive…');
+    try {
+      const res = await fetch('/api/sync-all', { method: 'POST' });
+      const data = await res.json();
+      if (res.status === 401) { location.href = data.authUrl || LOGIN; return; }
+      const failed = Object.entries(data.apps || {}).filter(([, a]) => !a.ok);
+      if (failed.length) show('Synced, with problems: ' + failed.map(([n, a]) => n + ' (' + (a.error || 'not saved to Drive') + ')').join('; '), 'bad');
+      else show('Synced ' + new Date().toLocaleTimeString() + (data.email ? ' · ' + data.email : ''), 'ok');
+    } catch {
+      show('Sync failed — could not reach the server.', 'bad');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', syncAll);
+
+  // Coming back from the Google sign-in: sync straight away.
+  const params = new URLSearchParams(location.search);
+  if (params.get('drive') === 'connected') {
+    history.replaceState(null, '', '/');
+    connected = true;
+    syncAll();
+  } else {
+    checkStatus();
+  }
+})();
+</script>
 
 </body>
 </html>

@@ -58,7 +58,8 @@ app.use(health.guard); // must run before express.static: keeps /MyHealthReports
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/MyHealthReports', health.driveFiles); // report files not on disk come from Drive
 app.use(express.json({ limit: '3mb' })); // health measurement CSV imports
-app.use('/api/bible', require('./bibleRoutes')({
+const bibleRoutes = require('./bibleRoutes');
+app.use('/api/bible', bibleRoutes({
   getDriveClient: getDriveClientOrThrow,
   folderId: process.env.BIBLE_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID,
 }));
@@ -1115,6 +1116,22 @@ app.get('/api/auth-status', async (_req, res) => {
       message: 'Could not verify Google Drive connection.',
     });
   }
+});
+
+// Home page "Sync with Google": checks the login, then refreshes every app's Drive data.
+app.post('/api/sync-all', async (_req, res) => {
+  const status = await probeDriveConnection().catch(() => ({ connected: false, reason: 'error' }));
+  if (!status.connected) return res.status(401).json({ ...status, authUrl: '/auth/google?redirect=/' });
+  const apps = {};
+  for (const [name, sync] of [['bible', bibleRoutes.sync], ['health', health.sync]]) {
+    try {
+      const s = await sync();
+      apps[name] = { ok: s.ok, error: s.error || null };
+    } catch (err) {
+      apps[name] = { ok: false, error: err.message };
+    }
+  }
+  res.json({ connected: true, email: status.email, apps });
 });
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
