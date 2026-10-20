@@ -421,6 +421,7 @@ function validMedication(m) {
 const METRICS = {
   weight: [10, 400, 'Weight (kg)'], waist: [30, 250, 'Waist (cm)'], bpSys: [50, 260, 'BP systolic'], bpDia: [30, 180, 'BP diastolic'],
   pulse: [20, 250, 'Pulse'], sleepHours: [0, 24, 'Sleep (hours)'], steps: [0, 200000, 'Steps'], glucose: [20, 600, 'Glucose (mg/dL)'],
+  bodyFat: [2, 75, 'Body fat (%)'],
 };
 function validMeasurement(x) {
   obj(x, 'measurement');
@@ -1205,6 +1206,7 @@ module.exports = function healthRoutes({ getDriveClient, getGmailClient, getCale
     const ALIASES = {
       date: /^(date|day|time|timestamp)/i, weight: /weight|body ?mass|kg/i, waist: /waist/i, bpSys: /systolic|^sys|bp.?sys|upper/i,
       bpDia: /diastolic|^dia|bp.?dia|lower/i, pulse: /pulse|heart ?rate|hr\b|bpm/i, sleepHours: /sleep/i, steps: /step/i, glucose: /glucose|sugar/i,
+      bodyFat: /fat.*(%|percent|pct)|^body ?fat$/i,
     };
     const headers = Object.keys(rows[0] || {});
     const map = {};

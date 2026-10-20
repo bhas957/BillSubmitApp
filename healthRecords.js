@@ -613,7 +613,7 @@ function aiContext(combined, problems = [], { medications = [], measurements = [
       series,
     };
   }
-  const metrics = ['weight', 'waist', 'bpSys', 'bpDia', 'pulse', 'sleepHours', 'steps', 'glucose'];
+  const metrics = ['weight', 'waist', 'bpSys', 'bpDia', 'pulse', 'sleepHours', 'steps', 'glucose', 'bodyFat'];
   const sorted = [...measurements].sort((a, b) => a.date.localeCompare(b.date));
   return {
     patient: { ...combined.patient, profile: profile ? { name: profile.name, relation: profile.relation, sex: profile.sex, birthYear: profile.birthYear } : undefined },
@@ -632,7 +632,7 @@ function aiContext(combined, problems = [], { medications = [], measurements = [
     // Body measurements: one row per date, columns: date + metrics (blank = not measured)
     bodyMeasurements: sorted.length ? {
       columns: ['date', ...metrics],
-      units: { weight: 'kg', waist: 'cm', bpSys: 'mmHg', bpDia: 'mmHg', pulse: 'bpm', sleepHours: 'h', steps: 'steps/day', glucose: 'mg/dL (home meter)' },
+      units: { weight: 'kg', waist: 'cm', bpSys: 'mmHg', bpDia: 'mmHg', pulse: 'bpm', sleepHours: 'h', steps: 'steps/day', glucose: 'mg/dL (home meter)', bodyFat: '% (body composition scan)' },
       rows: sorted.slice(-120).map((x) => [x.date, ...metrics.map((k) => x[k] ?? '')]),
     } : undefined,
     reports: reports.map((r) => ({

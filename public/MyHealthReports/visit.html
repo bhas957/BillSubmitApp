@@ -58,7 +58,7 @@
     const ch = D.changes;
     const lastM = {};
     for (const r of D.measurements) for (const [k, v] of Object.entries(r)) if (v != null && v !== '' && !['id', 'profile', 'date', 'note', 'createdAt', 'updatedAt'].includes(k)) lastM[k] = { v, date: r.date };
-    const mLabel = { weight: 'Weight (kg)', waist: 'Waist (cm)', bpSys: 'BP systolic', bpDia: 'BP diastolic', pulse: 'Pulse', sleepHours: 'Sleep (h)', steps: 'Steps/day', glucose: 'Home sugar' };
+    const mLabel = { weight: 'Weight (kg)', waist: 'Waist (cm)', bpSys: 'BP systolic', bpDia: 'BP diastolic', pulse: 'Pulse', sleepHours: 'Sleep (h)', steps: 'Steps/day', glucose: 'Home sugar', bodyFat: 'Body fat %' };
     document.getElementById('pack').innerHTML = `
       <section>
         <h1 class="title" style="margin-bottom:8px">Health summary for my doctor</h1>

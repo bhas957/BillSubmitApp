@@ -27,6 +27,10 @@
   .tip .tv { font-size: 14px; font-weight: 600; }
   .import-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .docs { list-style: none; margin: 0; padding: 0; }
+  .docs li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid var(--line); }
+  .docs li:first-child { border-top: 0; }
+  .docs a { font-weight: 500; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -53,6 +57,7 @@
       <label class="field"><span>Sleep hours</span><input type="number" name="sleepHours" step="0.25" min="0" max="24" inputmode="decimal" /></label>
       <label class="field"><span>Steps</span><input type="number" name="steps" min="0" max="200000" inputmode="numeric" /></label>
       <label class="field"><span>Sugar mg/dL</span><input type="number" name="glucose" min="20" max="600" inputmode="numeric" title="Home glucometer reading" /></label>
+      <label class="field"><span>Body fat %</span><input type="number" name="bodyFat" step="0.1" min="2" max="75" inputmode="decimal" title="From a body composition scale or scan" /></label>
       <label class="field" style="grid-column: span 2"><span>Note</span><input type="text" name="note" maxlength="500" placeholder="e.g. fasting, after walk" /></label>
       <button class="btn primary" type="submit">Save</button>
     </form>
@@ -60,6 +65,12 @@
   </div>
 
   <div class="grid" id="charts"></div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="head-row"><h2 class="section">Body composition reports</h2></div>
+    <div id="docs"><p class="empty-note">Loading…</p></div>
+    <p class="hint">Scale, kiosk and analyser printouts kept in the <b>Body Composition</b> folder of your reports. Each machine estimates fat differently, so compare a machine with itself over time.</p>
+  </div>
 
   <div class="card">
     <div class="head-row"><h2 class="section">Import from a CSV</h2></div>
@@ -90,9 +101,12 @@
     { key: 'sleepHours', name: 'Sleep', unit: 'hours', low: 7, high: 9 },
     { key: 'steps', name: 'Steps', unit: 'per day', low: 7000 },
     { key: 'glucose', name: 'Blood sugar (home)', unit: 'mg/dL', low: 70, high: 100, note: 'Normal band is for fasting readings' },
+    { key: 'bodyFat', name: 'Body fat', unit: '%' },
   ];
-  // Waist target depends on sex (Asian-Indian cut-offs).
+  // Waist and body-fat targets depend on sex (Asian-Indian cut-offs).
   const waistHigh = () => (person?.sex === 'female' ? 80 : 90);
+  const fatHigh = () => (person?.sex === 'female' ? 32 : 25);
+  const highOf = (m) => (m.key === 'waist' ? waistHigh() : m.key === 'bodyFat' ? fatHigh() : m.high);
 
   const fmt = (v) => (v == null ? '–' : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-IN') : String(+(+v).toFixed(1)));
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -113,7 +127,7 @@
     const lines = keys.map((k, i) => ({
       key: k,
       label: m.series ? (i === 0 ? 'Systolic' : 'Diastolic') : m.name,
-      high: k === 'bpDia' ? m.highDia : m.key === 'waist' ? waistHigh() : m.high,
+      high: k === 'bpDia' ? m.highDia : highOf(m),
       low: m.low,
       dash: i === 1 ? '5 4' : '',
       pts: rows.filter((r) => r[k] != null).map((r) => ({ date: r.date, v: r[k] })),
@@ -186,7 +200,7 @@
       let value = fmt(last[k]);
       if (m.series) { const d = latest('bpDia'); value = `${fmt(last.bpSys)}${d ? `/${fmt(d.bpDia)}` : ''}`; }
       const diff = last[k] - first[k];
-      const high = m.key === 'waist' ? waistHigh() : m.high;
+      const high = highOf(m);
       const range = m.series ? 'Normal below 120/80' : high != null && m.low != null ? `Normal ${m.low}–${high}` : high != null ? `Target below ${high}` : m.low != null ? `Target ${m.low.toLocaleString('en-IN')}+` : '';
       return `<article class="card mcard">
         <div class="mname">${esc(m.name)}</div><div class="munit">${esc(m.unit)}${m.series ? ' · solid systolic, dashed diastolic' : ''}</div>
@@ -198,9 +212,9 @@
   }
 
   function renderTable() {
-    const cols = ['weight', 'waist', 'bpSys', 'bpDia', 'pulse', 'sleepHours', 'steps', 'glucose'];
-    const head = ['Date', 'Weight', 'Waist', 'Sys', 'Dia', 'Pulse', 'Sleep', 'Steps', 'Sugar', 'Note', ''];
-    document.getElementById('table').innerHTML = rows.length ? `<table class="tbl"><thead><tr>${head.map((h, i) => `<th class="${i && i < 9 ? 'num' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${
+    const cols = ['weight', 'waist', 'bpSys', 'bpDia', 'pulse', 'sleepHours', 'steps', 'glucose', 'bodyFat'];
+    const head = ['Date', 'Weight', 'Waist', 'Sys', 'Dia', 'Pulse', 'Sleep', 'Steps', 'Sugar', 'Fat %', 'Note', ''];
+    document.getElementById('table').innerHTML = rows.length ? `<table class="tbl"><thead><tr>${head.map((h, i) => `<th class="${i && i <= cols.length ? 'num' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${
       [...rows].reverse().map((r) => `<tr><td>${esc(fmtDate(r.date))}</td>${cols.map((c) => `<td class="num">${r[c] == null ? '<span class="muted">–</span>' : fmt(r[c])}</td>`).join('')}<td>${esc(r.note || '')}</td>
         <td><button class="btn small ghost" data-del="${esc(r.id)}" aria-label="Delete ${esc(r.date)}">✕</button></td></tr>`).join('')
     }</tbody></table>` : '<p class="empty-note">No entries yet.</p>';
@@ -212,6 +226,17 @@
     person = t.profile;
     renderCharts();
     renderTable();
+  }
+
+  async function loadDocs() {
+    const el = document.getElementById('docs');
+    try {
+      const { files, error } = await api('/reports');
+      const docs = files.filter((f) => /(^|\/)Body Composition$/i.test(f.folder)).sort((a, b) => b.name.localeCompare(a.name));
+      el.innerHTML = docs.length ? `<ul class="docs">${docs.map((f) => `<li><a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>
+        <span class="muted">${(f.size / 1024).toFixed(0)} KB</span></li>`).join('')}</ul>`
+        : `<p class="empty-note">${esc(error || 'No body composition reports yet.')}</p>`;
+    } catch (err) { el.innerHTML = `<p class="empty-note">${esc(err.message)}</p>`; }
   }
 
   form.date.value = today();
@@ -245,6 +270,7 @@
   let resizeTimer;
   addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderCharts, 150); });
   document.addEventListener('themechange', renderCharts);
+  loadDocs();
   load().catch((e) => { document.getElementById('charts').innerHTML = `<div class="card empty-note">${esc(e.message)}</div>`; });
 </script>
 </body>
