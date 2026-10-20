@@ -138,8 +138,13 @@
   async function loadFiles() {
     const el = document.getElementById('files');
     try {
-      const { files } = await api('/reports');
-      if (!files.length) { el.innerHTML = '<li class="muted">No files yet. Put PDFs in public/MyHealthReports/pdf.</li>'; return; }
+      const { files, drive, error } = await api('/reports');
+      if (!files.length) {
+        el.innerHTML = `<li class="muted">${esc(error || (drive
+          ? 'No files yet. Upload PDFs to the pdf folder inside your MyHealthReports Google Drive folder.'
+          : 'No files yet. Set HEALTH_REPORTS_FOLDER_ID and connect Google Drive, or put PDFs in public/MyHealthReports/pdf.'))}</li>`;
+        return;
+      }
       files.sort((a, b) => a.folder.localeCompare(b.folder) || b.name.localeCompare(a.name));
       el.innerHTML = files.map((f) => `
         <li><span class="tag">${esc(f.folder || 'notes')}</span>

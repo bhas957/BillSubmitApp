@@ -259,6 +259,16 @@ Setup:
    AI calls are limited to `BIBLE_AI_PER_MINUTE` per device (default 10) and
    `BIBLE_AI_PER_DAY` in total (default 150).
 
+## My Health Reports
+
+`/MyHealthReports/` is behind `HEALTH_PASSWORD`. Its personal files (`pdf/`,
+`data/`, `guide.html`) are gitignored, so on Render they come from Google
+Drive: set `HEALTH_REPORTS_FOLDER_ID` to a Drive folder laid out exactly like
+`public/MyHealthReports/` and upload those folders into it. Any file missing
+from the server's disk is streamed from that folder (after login), and the
+"Original reports" list shows everything under its `pdf/` folder. Drive
+listings are cached for a minute, so new uploads can take that long to appear.
+
 ## Dev tool: OCR robustness fixtures
 
 `dev-tools/ocr-robustness-fixtures/` generates synthetic camera-photo-like

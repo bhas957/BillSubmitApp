@@ -157,8 +157,8 @@ let driveVersion = null;
 let driveDirty = false;
 let driveError = null;
 
-function driveClient() {
-  if (!drive.getClient || !drive.folderId) return null;
+function driveClient(folderId = drive.folderId) {
+  if (!drive.getClient || !folderId) return null;
   try {
     return drive.getClient();
   } catch (err) {
@@ -350,20 +350,106 @@ function validProblem(p, categories) {
 
 const route = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
+const REPORT_FILE = /\.(pdf|md|png|jpe?g)$/i;
+
 function listReportFiles(dir, base = '') {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const rel = base ? `${base}/${e.name}` : e.name;
     if (e.isDirectory()) return listReportFiles(path.join(dir, e.name), rel);
-    if (!/\.(pdf|md|png|jpe?g)$/i.test(e.name)) return [];
+    if (!REPORT_FILE.test(e.name)) return [];
     const st = fs.statSync(path.join(dir, e.name));
     return [{ path: rel, folder: base || '', name: e.name, size: st.size, modified: st.mtime.toISOString() }];
   });
 }
 
+// ---- Reports folder in Google Drive -----------------------------------------
+// HEALTH_REPORTS_FOLDER_ID mirrors public/MyHealthReports (pdf/, data/,
+// guide.html, ...). Those files are gitignored, so on Render they only exist
+// in Drive: anything missing from the local disk is streamed from there.
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const REPORTS_CACHE_MS = 60_000;
+let reportsFolderId = '';
+const folderCache = new Map(); // Drive folder id -> { at, files }
+
+async function listDriveFolder(client, folderId) {
+  const hit = folderCache.get(folderId);
+  if (hit && Date.now() - hit.at < REPORTS_CACHE_MS) return hit.files;
+  const files = [];
+  let pageToken;
+  do {
+    const res = await client.files.list({
+      q: `'${folderId}' in parents and trashed=false`,
+      fields: 'nextPageToken, files(id,name,mimeType,size,modifiedTime)',
+      orderBy: 'modifiedTime desc', // duplicate names: the newest wins
+      pageSize: 1000,
+      pageToken,
+      spaces: 'drive',
+    });
+    files.push(...(res.data.files || []));
+    pageToken = res.data.nextPageToken;
+  } while (pageToken);
+  folderCache.set(folderId, { at: Date.now(), files });
+  return files;
+}
+
+async function findDrivePath(client, segments) {
+  let node = { id: reportsFolderId, mimeType: FOLDER_MIME };
+  for (const name of segments) {
+    if (node.mimeType !== FOLDER_MIME) return null;
+    node = (await listDriveFolder(client, node.id)).find((f) => f.name === name);
+    if (!node) return null;
+  }
+  return node;
+}
+
+async function listDriveReports(client, folderId, base = '') {
+  const children = await listDriveFolder(client, folderId);
+  const nested = await Promise.all(children.map(async (f) => {
+    const rel = base ? `${base}/${f.name}` : f.name;
+    if (f.mimeType === FOLDER_MIME) return listDriveReports(client, f.id, rel);
+    if (!REPORT_FILE.test(f.name)) return [];
+    return [{ path: rel, folder: base, name: f.name, size: Number(f.size || 0), modified: f.modifiedTime }];
+  }));
+  return nested.flat();
+}
+
+const driveMessage = (err) => err.response?.data?.error?.message || err.message || String(err);
+
+// Mounted at /MyHealthReports after express.static, so it only sees files
+// that aren't on disk; the guard has already checked the login.
+async function serveFromDrive(req, res, next) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const client = driveClient(reportsFolderId);
+  if (!client) return next();
+  let segments;
+  try {
+    segments = decodeURIComponent(req.path).split('/').filter(Boolean);
+  } catch {
+    return next();
+  }
+  if (!segments.length || segments.some((s) => s === '.' || s === '..')) return next();
+  try {
+    const file = await findDrivePath(client, segments);
+    if (!file || file.mimeType.startsWith('application/vnd.google-apps.')) return next();
+    res.type(path.extname(file.name) || file.mimeType);
+    if (file.size) res.setHeader('Content-Length', file.size);
+    if (req.method === 'HEAD') return res.end();
+    const media = await client.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'stream' });
+    media.data.on('error', (err) => {
+      console.error('Health Drive download error:', driveMessage(err));
+      res.destroy(err);
+    }).pipe(res);
+  } catch (err) {
+    console.error('Health Drive download error:', driveMessage(err));
+    res.status(502).type('text').send(`Could not load this file from Google Drive: ${driveMessage(err)}`);
+  }
+}
+
 // ---- Router -----------------------------------------------------------------
-module.exports = function healthRoutes({ getDriveClient, folderId, publicDir }) {
+module.exports = function healthRoutes({ getDriveClient, folderId, reportsFolder, publicDir }) {
   drive = { getClient: getDriveClient, folderId };
+  reportsFolderId = reportsFolder || '';
   const router = express.Router();
   router.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
@@ -394,11 +480,28 @@ module.exports = function healthRoutes({ getDriveClient, folderId, publicDir }) 
 
   router.use(requireAuth);
 
-  router.get('/reports', (_req, res) => {
-    const files = listReportFiles(path.join(publicDir, PROTECTED_DIR, 'pdf'))
+  // Drive's pdf/ folder plus any local-only files (the local copy wins on the
+  // same path, matching how the files themselves are served).
+  router.get('/reports', route(async (_req, res) => {
+    const byPath = new Map();
+    let error = null;
+    const client = driveClient(reportsFolderId);
+    if (client) {
+      try {
+        const pdf = await findDrivePath(client, ['pdf']);
+        if (pdf?.mimeType === FOLDER_MIME) {
+          for (const f of await listDriveReports(client, pdf.id)) byPath.set(f.path, f);
+        }
+      } catch (err) {
+        error = `Google Drive: ${driveMessage(err)}`;
+        console.error('Health reports listing error:', error);
+      }
+    }
+    for (const f of listReportFiles(path.join(publicDir, PROTECTED_DIR, 'pdf'))) byPath.set(f.path, f);
+    const files = [...byPath.values()]
       .map((f) => ({ ...f, url: `/${PROTECTED_DIR}/pdf/${f.path.split('/').map(encodeURIComponent).join('/')}` }));
-    res.json({ files });
-  });
+    res.json({ files, drive: Boolean(client), error });
+  }));
 
   router.get('/problems', route(async (_req, res) => {
     const { state } = await withState();
@@ -469,5 +572,5 @@ module.exports = function healthRoutes({ getDriveClient, folderId, publicDir }) 
     res.status(500).json({ error: err.message || 'Server error' });
   });
 
-  return { router, guard: makeGuard(publicDir) };
+  return { router, guard: makeGuard(publicDir), driveFiles: serveFromDrive };
 };

@@ -47,10 +47,12 @@ app.use((req, res, next) => {
 const health = require('./healthRoutes')({
   getDriveClient: getDriveClientOrThrow,
   folderId: process.env.HEALTH_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID,
+  reportsFolder: process.env.HEALTH_REPORTS_FOLDER_ID,
   publicDir: path.join(__dirname, 'public'),
 });
 app.use(health.guard); // must run before express.static: keeps /MyHealthReports behind the login
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/MyHealthReports', health.driveFiles); // report files not on disk come from Drive
 app.use(express.json());
 app.use('/api/bible', require('./bibleRoutes')({
   getDriveClient: getDriveClientOrThrow,
