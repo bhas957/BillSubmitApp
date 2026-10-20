@@ -21,6 +21,8 @@ const OAUTH_REFRESH_TOKEN = process.env.GOOGLE_OAUTH_REFRESH_TOKEN;
 const OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/gmail.readonly',
+  // Retest reminders from My Health Reports
+  'https://www.googleapis.com/auth/calendar.events',
 ];
 const ZOMATO_GMAIL_QUERY = process.env.ZOMATO_GMAIL_QUERY
   || '(from:zomato.com OR subject:zomato) has:attachment filename:pdf';
@@ -46,6 +48,8 @@ app.use((req, res, next) => {
 });
 const health = require('./healthRoutes')({
   getDriveClient: getDriveClientOrThrow,
+  getGmailClient: () => getGmailClientOrThrow(),
+  getCalendarClient: () => getCalendarClientOrThrow(),
   folderId: process.env.HEALTH_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID,
   reportsFolder: process.env.HEALTH_REPORTS_FOLDER_ID,
   publicDir: path.join(__dirname, 'public'),
@@ -53,7 +57,7 @@ const health = require('./healthRoutes')({
 app.use(health.guard); // must run before express.static: keeps /MyHealthReports behind the login
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/MyHealthReports', health.driveFiles); // report files not on disk come from Drive
-app.use(express.json());
+app.use(express.json({ limit: '3mb' })); // health measurement CSV imports
 app.use('/api/bible', require('./bibleRoutes')({
   getDriveClient: getDriveClientOrThrow,
   folderId: process.env.BIBLE_DRIVE_FOLDER_ID || DRIVE_FOLDER_ID,
@@ -112,7 +116,8 @@ oauth2Client.on('tokens', (tokens) => {
 
 // Whitelist of pages the OAuth flow is allowed to bounce back to, so the
 // callback's redirect target can't be hijacked into an open redirect.
-const ALLOWED_OAUTH_REDIRECTS = new Set(['/', '/bill.html', '/ocr.html', '/bible.html', '/MyHealthReports/note-my-health-problems.html']);
+const ALLOWED_OAUTH_REDIRECTS = new Set(['/', '/bill.html', '/ocr.html', '/bible.html', '/MyHealthReports/note-my-health-problems.html',
+  '/MyHealthReports/', '/MyHealthReports/plan.html']);
 
 function safeOAuthRedirect(value) {
   return ALLOWED_OAUTH_REDIRECTS.has(value) ? value : '/';
@@ -166,6 +171,13 @@ function getDriveClientOrThrow() {
   if (!tokens) throw authRequiredError();
   oauth2Client.setCredentials(tokens);
   return google.drive({ version: 'v3', auth: oauth2Client });
+}
+
+function getCalendarClientOrThrow() {
+  const tokens = loadSavedTokens();
+  if (!tokens) throw authRequiredError();
+  oauth2Client.setCredentials(tokens);
+  return google.calendar({ version: 'v3', auth: oauth2Client });
 }
 
 function getGmailClientOrThrow() {

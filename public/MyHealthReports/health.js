@@ -34,8 +34,22 @@
     });
   }
 
+  // Family profiles: the selected person is sent with every API call.
+  const PROFILE_KEY = 'health-profile';
+  function profile() {
+    try { return localStorage.getItem(PROFILE_KEY) || 'me'; } catch { return 'me'; }
+  }
+  function setProfile(id) {
+    try { localStorage.setItem(PROFILE_KEY, id); } catch { /* private mode */ }
+  }
+  // "/api/health/x" (or a path under it) with the current profile added.
+  function url(path) {
+    const full = path.startsWith('/') && !path.startsWith('/api/') ? `/api/health${path}` : path;
+    return `${full}${full.includes('?') ? '&' : '?'}profile=${encodeURIComponent(profile())}`;
+  }
+
   async function api(path, opts = {}) {
-    const res = await fetch(`/api/health${path}`, {
+    const res = await fetch(url(path), {
       method: opts.method || 'GET',
       headers: opts.body ? { 'Content-Type': 'application/json' } : {},
       body: opts.body ? JSON.stringify(opts.body) : undefined,
@@ -79,11 +93,40 @@
     return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('en-IN', opts);
   }
 
+  // Person switcher in the top bar of every page.
+  async function mountProfilePicker() {
+    const bar = document.querySelector('.topbar');
+    if (!bar) return;
+    let profiles;
+    try {
+      ({ profiles } = await api('/profiles'));
+    } catch { return; }
+    if (!profiles.some((p) => p.id === profile())) { setProfile('me'); location.reload(); return; }
+    const sel = document.createElement('select');
+    sel.className = 'profile-pick no-print';
+    sel.setAttribute('aria-label', 'Whose records');
+    sel.title = 'Whose records you are looking at';
+    sel.innerHTML = profiles.map((p) => `<option value="${esc(p.id)}">${esc(p.id === 'me' && p.name === 'Me' ? 'Me' : p.name)}</option>`).join('')
+      + '<option value="__manage">Add / manage people…</option>';
+    sel.value = profile();
+    sel.addEventListener('change', () => {
+      if (sel.value === '__manage') { location.href = 'people.html'; return; }
+      setProfile(sel.value);
+      location.reload();
+    });
+    bar.insertBefore(sel, bar.querySelector('[data-theme-toggle]'));
+    const current = profiles.find((p) => p.id === profile());
+    document.dispatchEvent(new CustomEvent('profile', { detail: { profile: current, profiles } }));
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-theme-toggle]').forEach((b) => b.addEventListener('click', toggleTheme));
     document.querySelectorAll('[data-logout]').forEach((b) => b.addEventListener('click', logout));
     updateThemeButtons();
+    if (!document.body.hasAttribute('data-no-profile')) mountProfilePicker();
   });
 
-  window.Health = { api, toast, esc, fmtDate, effectiveTheme };
+  const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+
+  window.Health = { api, url, toast, esc, fmtDate, effectiveTheme, profile, setProfile, today };
 })();

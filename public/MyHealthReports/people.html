@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Family Profiles</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .person { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .person:last-child { border-bottom: 0; }
+  .person .name { font-weight: 600; }
+  .person .meta { color: var(--ink-soft); font-size: 13px; }
+  .person .spacer { flex: 1; }
+</style>
+</head>
+<body>
+<div class="wrap narrow">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / People</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title">Family profiles</h1>
+  <p class="lede">Keep reports, problems, medicines and measurements for each family member separately. Switch person from the menu at the top of any page. Reports for others are stored under <span class="mono">pdf/people/&lt;name&gt;/</span>; reports imported from Gmail go to the person whose name is on the report.</p>
+
+  <div class="card">
+    <div class="head-row"><h2 class="section">People</h2><span class="spacer"></span><button class="btn small primary" id="add">Add person</button></div>
+    <div id="list"><p class="empty-note">Loading…</p></div>
+  </div>
+</div>
+
+<dialog class="sheet" id="dlg">
+  <form method="dialog" id="form">
+    <h3 id="dlgTitle">Add person</h3>
+    <div class="form-grid">
+      <label class="field full"><span>Name (as printed on their reports)</span><input type="text" name="name" maxlength="80" required /></label>
+      <label class="field"><span>Relation</span><input type="text" name="relation" maxlength="40" placeholder="e.g. Wife, Father" /></label>
+      <label class="field"><span>Sex</span><select name="sex"><option value="">–</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select></label>
+      <label class="field"><span>Birth year</span><input type="number" name="birthYear" min="1900" max="2100" /></label>
+    </div>
+    <div class="actions">
+      <button class="btn danger left hidden" type="button" id="del">Remove</button>
+      <button class="btn" type="button" id="cancel">Cancel</button>
+      <button class="btn primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const { api, esc, toast, profile, setProfile } = window.Health;
+  const dlg = document.getElementById('dlg');
+  const form = document.getElementById('form');
+  let people = [];
+  let editing = null;
+
+  function render() {
+    document.getElementById('list').innerHTML = people.map((p) => `
+      <div class="person">
+        <div><div class="name">${esc(p.name)}${p.id === profile() ? ' <span class="pill">viewing</span>' : ''}</div>
+        <div class="meta">${esc([p.id === 'me' ? 'You' : p.relation, p.sex, p.birthYear && `born ${p.birthYear}`].filter(Boolean).join(' · '))}</div></div>
+        <span class="spacer"></span>
+        ${p.id !== profile() ? `<button class="btn small" data-view="${esc(p.id)}">View their records</button>` : ''}
+        <button class="btn small ghost" data-edit="${esc(p.id)}">Edit</button>
+      </div>`).join('');
+  }
+
+  function open(p) {
+    editing = p ? p.id : null;
+    form.reset();
+    if (p) for (const k of ['name', 'relation', 'sex', 'birthYear']) form[k].value = p[k] ?? '';
+    document.getElementById('dlgTitle').textContent = p ? 'Edit person' : 'Add person';
+    document.getElementById('del').classList.toggle('hidden', !p || p.id === 'me');
+    dlg.showModal();
+    form.name.focus();
+  }
+
+  async function load() {
+    ({ profiles: people } = await api('/profiles'));
+    render();
+  }
+
+  document.getElementById('add').addEventListener('click', () => open(null));
+  document.getElementById('cancel').addEventListener('click', () => dlg.close());
+  document.getElementById('list').addEventListener('click', (e) => {
+    const v = e.target.closest('[data-view]');
+    if (v) { setProfile(v.dataset.view); location.href = './'; return; }
+    const ed = e.target.closest('[data-edit]');
+    if (ed) open(people.find((p) => p.id === ed.dataset.edit));
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { profile: { name: form.name.value, relation: form.relation.value, sex: form.sex.value, birthYear: form.birthYear.value || null } };
+    try {
+      await api(editing ? `/profiles/${encodeURIComponent(editing)}` : '/profiles', { method: editing ? 'PUT' : 'POST', body });
+      dlg.close();
+      toast('Saved');
+      load();
+    } catch (err) { toast(err.message, 5000); }
+  });
+  document.getElementById('del').addEventListener('click', async () => {
+    const p = people.find((x) => x.id === editing);
+    if (!p || !confirm(`Remove ${p.name}? Only possible once they have no reports, problems, medicines or measurements.`)) return;
+    try {
+      await api(`/profiles/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
+      if (profile() === p.id) setProfile('me');
+      dlg.close();
+      toast('Removed');
+      load();
+    } catch (err) { toast(err.message, 6000); }
+  });
+  load().catch((e) => { document.getElementById('list').innerHTML = `<p class="empty-note">${esc(e.message)}</p>`; });
+</script>
+</body>
+</html>

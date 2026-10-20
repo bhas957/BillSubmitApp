@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Review Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .changes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .changes h3 { font-size: 13px; margin: 0 0 6px; }
+  .changes ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  .changes li { margin: 3px 0; }
+  .caveat { font-size: 12px; color: var(--ink-soft); margin: 10px 0 0; }
+  .v-ok { color: var(--good-ink); }
+  .v-bad { color: var(--critical-ink); font-weight: 600; }
+  tr.check td { background: var(--warn-bg); }
+  input.override { width: 100px; min-height: 32px; padding: 4px 8px; text-align: right; }
+  .warnings { margin: 0; padding-left: 18px; font-size: 13px; color: var(--critical-ink); }
+  .findings dt { font-weight: 600; margin-top: 8px; }
+  .findings dd { margin: 2px 0 0; color: var(--ink-soft); }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / Review report</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title" id="title">Review report</h1>
+  <p class="lede" id="lede">Check what was read from the PDF against the original, fix anything wrong, then mark it reviewed. Corrections are kept even if the report is parsed again.</p>
+
+  <div id="main"><p class="empty-note">Loading…</p></div>
+</div>
+
+<script>
+  const { api, esc, toast, fmtDate } = window.Health;
+  const id = new URLSearchParams(location.search).get('id');
+  let D = null;
+  let onlyCheck = false;
+  const fmt = (v) => (v == null ? '–' : Math.abs(v) >= 100 ? String(Math.round(v * 10) / 10) : String(+(+v).toFixed(3)));
+
+  function changesHtml(ch) {
+    if (!ch) return '';
+    if (!ch.comparedTo) return '<div class="card" style="margin-bottom:16px"><h2 class="section">What changed</h2><p class="muted">First blood test on record for this person.</p></div>';
+    const li = (x, extra = '') => `<li><b>${esc(x.name)}</b> ${x.before != null ? `${fmt(x.before)} → ` : ''}<b>${fmt(x.value)}</b> ${esc(x.unit)}${extra}</li>`;
+    const col = (h, arr, empty, fn = li) => `<div><h3>${h} (${arr.length})</h3>${arr.length ? `<ul>${arr.map((x) => fn(x)).join('')}</ul>` : `<p class="muted" style="font-size:13px;margin:0">${empty}</p>`}</div>`;
+    return `<div class="card" style="margin-bottom:16px">
+      <h2 class="section">What changed since ${esc(fmtDate(ch.comparedTo.date))} (${esc(ch.comparedTo.provider)})</h2>
+      <div class="changes">
+        ${col('<span class="warn">Newly out of range</span>', ch.newlyOut, 'None')}
+        ${col('<span class="good">Back to normal</span>', ch.backToNormal, 'None')}
+        ${col('Still out of range', ch.stillOut, 'None')}
+        ${col('Biggest moves (≥20%)', ch.bigMoves, 'None', (x) => li(x, ` (${x.pct > 0 ? '+' : ''}${x.pct}%)`))}
+      </div>
+      ${ch.caveats.map((c) => `<p class="caveat">⚠ ${esc(c)}</p>`).join('')}
+    </div>`;
+  }
+
+  function render() {
+    const r = D.record;
+    const ed = r.edits || {};
+    const markers = new Map(D.markers.map((m) => [m.key, m]));
+    document.getElementById('title').textContent = `${fmtDate(r.date)} · ${r.provider}`;
+    const checks = (r.results || []).filter((x) => x.verified === false).length;
+    const results = (r.results || []).filter((x) => !onlyCheck || x.verified === false || x.key);
+    const seenKeys = new Set();
+    const rows = results.map((x) => {
+      const m = x.key && markers.get(x.key);
+      const first = m && !seenKeys.has(x.key);
+      if (m) seenKeys.add(x.key);
+      const ver = x.verified === true ? '<span class="v-ok" title="Number found in the PDF text">✓ in PDF</span>'
+        : x.verified === false ? '<span class="v-bad" title="This number was not found in the PDF text">⚠ check</span>'
+          : x.source === 'manual' ? 'manual' : '';
+      return `<tr class="${x.verified === false ? 'check' : ''}"><td>${esc(x.test)}${x.panel ? `<div class="muted" style="font-size:12px">${esc(x.panel)}</div>` : ''}</td>
+        <td class="num">${esc(x.valueText ?? fmt(x.value))}${x.flag && x.flag !== 'N' ? ` <span class="v-bad">${esc(x.flag)}</span>` : ''}</td><td>${esc(x.unit || '')}</td><td>${esc(x.refRange || '')}</td><td>${ver}</td>
+        <td>${m ? `${esc(m.name)}<div class="muted" style="font-size:12px">charted: ${fmt(r.values?.[x.key])} ${esc(m.unit)}</div>` : '<span class="muted">–</span>'}</td>
+        <td>${first ? `<input class="override" type="number" step="any" data-key="${esc(x.key)}" value="${ed.values?.[x.key] ?? ''}" placeholder="fix" aria-label="Correct value for ${esc(m.name)}" />` : ''}</td></tr>`;
+    }).join('');
+    const P = D.parsed || {};
+    const field = (k, label, type = 'text', extra = '') => `<label class="field"><span>${label}${P[k] != null && String(P[k]) !== String(r[k] ?? '') ? ` <span class="muted" style="text-transform:none">(read as “${esc(P[k])}”)</span>` : ''}</span><input type="${type}" name="${k}" value="${esc(r[k] ?? '')}" ${extra} /></label>`;
+    document.getElementById('main').innerHTML = `
+      ${changesHtml(D.changes)}
+      <div class="card" style="margin-bottom:16px">
+        <div class="head-row"><h2 class="section">Report details</h2><span class="spacer"></span>
+          <a class="btn small" href="pdf/${r.file.split('/').map(encodeURIComponent).join('/')}" target="_blank" rel="noopener">Open original PDF</a></div>
+        <form class="form-grid" id="meta">
+          ${field('date', 'Test date', 'date')}
+          ${field('collectedTime', 'Sample time', 'time')}
+          ${field('provider', 'Lab / hospital')}
+          ${field('orderedVia', 'Booked via')}
+          ${field('title', 'Test / package name')}
+          ${field('orderId', 'Order / visit id')}
+          <label class="field"><span>Type</span><select name="type">${['lab', 'imaging', 'cardiac', 'other'].map((t) => `<option ${r.type === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+          <label class="field"><span>Whose report</span><select name="profile">${D.profiles.map((p) => `<option value="${esc(p.id)}" ${r.profile === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+          <label class="field"><span>Status</span><select name="status"><option value="final" ${r.status !== 'interim' ? 'selected' : ''}>Final</option><option value="interim" ${r.status === 'interim' ? 'selected' : ''}>Interim (results pending)</option></select></label>
+          <div class="field"><span>File</span><div class="mono" style="font-size:12px;word-break:break-all;padding-top:8px">${esc(r.file)}</div></div>
+        </form>
+        <p class="muted" style="font-size:12px;margin:10px 0 0">Read by ${esc(r.extractedBy || '?')}${r.extractedAt ? ` on ${esc(fmtDate(r.extractedAt))}` : ''}${r.reviewed ? ` · <span class="good">reviewed ${esc(fmtDate(r.reviewed))}</span>` : ''}${r.locked ? ' · locked (never re-parsed)' : ''}. Changing the date, lab, name or person renames the file to match.</p>
+        ${r.warnings?.length ? `<ul class="warnings" style="margin-top:10px">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+      </div>
+      ${r.findings?.length || r.impression ? `<div class="card" style="margin-bottom:16px"><h2 class="section">Findings</h2>
+        <dl class="findings">${(r.findings || []).map((f) => `<dt>${esc(f.area)}</dt><dd>${esc(f.text)}</dd>`).join('')}${r.impression ? `<dt>Impression</dt><dd>${esc(r.impression)}</dd>` : ''}</dl></div>` : ''}
+      <div class="card">
+        <div class="head-row"><h2 class="section">Results (${(r.results || []).length})</h2><span class="spacer"></span>
+          ${checks ? `<span class="warn" style="font-size:13px">${checks} to check</span>` : '<span class="good" style="font-size:13px">every number found in the PDF</span>'}</div>
+        <div class="filters"><button class="chip" id="onlyCheck" aria-pressed="${onlyCheck}">Only tracked tests and ones to check</button></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Test</th><th class="num">Result</th><th>Unit</th><th>Range</th><th>Check</th><th>Tracked as</th><th>Correct value</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="empty-note">No results</td></tr>'}</tbody></table></div>
+        <p class="muted" style="font-size:12px">“Correct value” replaces the charted number for that test, in the chart's unit. Leave empty to use what was read.</p>
+      </div>
+      <div class="actions">
+        <button class="btn" id="save">Save corrections</button>
+        <button class="btn primary" id="reviewed">${r.reviewed ? 'Save (still reviewed)' : 'Save &amp; mark reviewed'}</button>
+      </div>`;
+  }
+
+  async function save(markReviewed) {
+    const f = document.getElementById('meta');
+    const P = D.parsed || {};
+    const edits = {};
+    for (const k of ['date', 'collectedTime', 'provider', 'orderedVia', 'title', 'orderId', 'type', 'profile', 'status']) {
+      const v = f[k].value.trim();
+      // Only keep fields that differ from what the parser read, so a re-parse can still improve the rest.
+      if (v && v !== String(P[k] ?? '')) edits[k] = v;
+    }
+    const values = {};
+    document.querySelectorAll('input.override').forEach((i) => { if (i.value !== '') values[i.dataset.key] = Number(i.value); });
+    if (Object.keys(values).length) edits.values = values;
+    if (markReviewed || D.record.reviewed) edits.reviewed = D.record.reviewed || new Date().toISOString().slice(0, 10);
+    try {
+      const r = await api(`/records/${encodeURIComponent(D.record.id)}`, { method: 'PUT', body: { edits } });
+      toast(markReviewed ? 'Saved and marked reviewed' : 'Saved');
+      if (r.record.id !== D.record.id) {
+        history.replaceState(null, '', `record.html?id=${encodeURIComponent(r.record.id)}`);
+        toast(`Saved; file renamed to ${r.record.file}`, 5000);
+      }
+      await load(r.record.id);
+    } catch (err) { toast(err.message, 6000); }
+  }
+
+  async function load(rid = id) {
+    D = await api(`/records/${encodeURIComponent(rid)}`);
+    render();
+  }
+
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'onlyCheck') { onlyCheck = !onlyCheck; render(); }
+    if (e.target.id === 'save') save(false);
+    if (e.target.id === 'reviewed') save(true);
+  });
+  if (!id) document.getElementById('main').innerHTML = '<p class="empty-note">No report chosen. Open one from the Reports list.</p>';
+  else load().catch((e) => { document.getElementById('main').innerHTML = `<p class="empty-note">${esc(e.message)}</p>`; });
+</script>
+</body>
+</html>

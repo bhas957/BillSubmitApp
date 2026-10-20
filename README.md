@@ -266,8 +266,59 @@ Setup:
 Drive: set `HEALTH_REPORTS_FOLDER_ID` to a Drive folder laid out exactly like
 `public/MyHealthReports/` and upload those folders into it. Any file missing
 from the server's disk is streamed from that folder (after login), and the
-"Original reports" list shows everything under its `pdf/` folder. Drive
-listings are cached for a minute, so new uploads can take that long to appear.
+"Reports" list shows everything under its `pdf/` folder. Drive listings are
+cached for a minute, so new uploads can take that long to appear.
+
+**Report records.** Every report is parsed once into
+`data/records/<report name>.json` (date, provider, every result with unit and
+range, scan findings, impression). `data/health-records.json` combines them
+for the app and the AI; `data/health-data.json` is the chart data. The parser
+code is in `healthRecords.js`, the marker list (with LOINC codes and unit
+conversions) in `healthMarkers.js`.
+
+- With `GEMINI_API_KEY` set, Gemini reads any provider's PDF into a fixed JSON
+  schema. Each number is then looked up in the PDF's own text (unfound ones are
+  marked `verified: false`), and for Thyrocare reports the offline rule parser
+  wins where the two disagree. Without a key only the rule parser runs.
+- Files are renamed `YYYY-MM-DD_Provider_Test_OrderId.pdf` into `Blood Tests/`
+  or `scans/`. Hand corrections go in a record's `"edits"` (`title`, `date`,
+  `provider`, `values: { "tsh": 5.1 }`) and survive re-parsing; `"locked": true`
+  stops a record being re-parsed.
+- **Upload a report** on the hub page does all of that on the server and saves
+  the PDF and JSON to disk and Drive. Locally you can instead drop PDFs into
+  `pdf/` and run:
+
+```bash
+npm run health:build                # parse new files, rename, rebuild data
+npm run health:build -- --force     # re-parse everything not locked (e.g. after adding a Gemini key)
+npm run health:sync                 # push pdf/, data/, guide.html to the Drive folder (renames by content)
+npm run health:sync -- --prune      # also bin files that exist only in Drive
+```
+
+**Ask about my reports** (`ask.html`) sends the question plus a compact JSON
+of all records, the health-problems log, medicines and body measurements
+(`/api/health/records?ai=1` shows exactly what) to Gemini. **Export (FHIR)**
+downloads an HL7 FHIR R4 bundle (Patient, DiagnosticReport, Observation with
+LOINC codes) for other health apps or a hospital.
+
+Other pages, all per person (pick the person in the top bar):
+
+| Page | What it does |
+|---|---|
+| `record.html?id=` | Review a parsed report against the PDF: numbers not found in the PDF are flagged; fix details or charted values, mark reviewed. Changing date/lab/title/person renames the file (disk + Drive). |
+| `medicines.html` | Medicines & supplements with start/stop dates and the tests they should change; shows before/after values, and the periods appear as hatched bands on `compare.html`. |
+| `vitals.html` | Weight, waist, BP, pulse, sleep, steps, home sugar; one row per day; CSV import (date column + recognised headers, dd/mm/yyyy). |
+| `plan.html` | Retest reminders suggested from out-of-range results; "Add to Google Calendar" (needs the `calendar.events` scope: reconnect Google once). |
+| `visit.html` | Printable doctor-visit pack, with saved questions and "Suggest questions with AI". |
+| `people.html` | Family profiles. Their reports live under `pdf/people/<id>/`; Gmail imports go to the person whose name is on the report. |
+
+**Gmail import**: "Import from Gmail" on the hub (and every
+`HEALTH_GMAIL_SYNC_HOURS`, default 12, while the server runs) searches for lab
+and hospital emails with PDFs, skips PDFs that don't look like medical reports
+before any AI call, de-duplicates by content and parses the rest like an
+upload. Password-protected PDFs are opened with `HEALTH_PDF_PASSWORDS`.
+Problems, medicines, measurements, reminders and people are stored in
+`health-problems.json` (local + Drive mirror), tagged with `profile`.
 
 ## Dev tool: OCR robustness fixtures
 

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Retest Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .rem { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .rem:last-child { border-bottom: 0; }
+  .rem .due { font-family: var(--mono); font-size: 13px; min-width: 104px; }
+  .rem .due.overdue { color: var(--critical-ink); font-weight: 600; }
+  .rem .body { flex: 1 1 280px; }
+  .rem .t { font-weight: 600; }
+  .rem .n { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
+  .rem .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .rem.done .t { text-decoration: line-through; color: var(--muted); }
+  .sug { border: 1px dashed var(--line); padding: 12px; margin-bottom: 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+  .sug .body { flex: 1 1 280px; }
+</style>
+</head>
+<body>
+<div class="wrap narrow">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / Retest plan</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title">Retest plan</h1>
+  <p class="lede">When to repeat which tests. Add a reminder to Google Calendar and you'll get a pop-up 3 days and an email a week before it's due.</p>
+
+  <div class="card" id="sugCard">
+    <div class="head-row"><h2 class="section">Suggested from your latest report</h2></div>
+    <div id="sugs"><p class="empty-note">Loading…</p></div>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">Out-of-range groups: 3 months after the last test; full check-up: yearly. Your doctor may want a different schedule (thyroid changes are often checked after 6–8 weeks).</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="head-row"><h2 class="section">My reminders</h2><span class="spacer"></span><button class="btn small primary" id="add">Add reminder</button></div>
+    <div id="list"></div>
+  </div>
+</div>
+
+<dialog class="sheet" id="dlg">
+  <form method="dialog" id="form">
+    <h3 id="dlgTitle">Reminder</h3>
+    <div class="form-grid">
+      <label class="field full"><span>What</span><input type="text" name="title" maxlength="200" required placeholder="e.g. Repeat TSH + Free T4" /></label>
+      <label class="field"><span>Due on</span><input type="date" name="due" required /></label>
+      <label class="field"><span>Done</span><select name="done"><option value="">Not yet</option><option value="1">Done</option></select></label>
+      <label class="field full"><span>Notes</span><textarea name="notes" rows="3" maxlength="2000"></textarea></label>
+    </div>
+    <div class="actions">
+      <button class="btn danger left hidden" type="button" id="del">Delete</button>
+      <button class="btn" type="button" id="cancel">Cancel</button>
+      <button class="btn primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+  const { api, esc, toast, fmtDate, today } = window.Health;
+  const dlg = document.getElementById('dlg');
+  const form = document.getElementById('form');
+  let rems = [];
+  let sugs = [];
+  let editing = null;
+
+  function render() {
+    const now = today();
+    document.getElementById('list').innerHTML = rems.map((r) => `
+      <div class="rem${r.done ? ' done' : ''}">
+        <div class="due${!r.done && r.due < now ? ' overdue' : ''}">${esc(fmtDate(r.due))}${!r.done && r.due < now ? '<br>overdue' : ''}</div>
+        <div class="body"><div class="t">${esc(r.title)}</div>${r.notes ? `<div class="n">${esc(r.notes)}</div>` : ''}
+          ${r.calendarLink ? `<div class="n"><a href="${esc(r.calendarLink)}" target="_blank" rel="noopener">In Google Calendar ↗</a></div>` : ''}</div>
+        <div class="acts">
+          ${r.done ? '' : `<button class="btn small" data-cal="${esc(r.id)}">${r.calendarEventId ? 'Update calendar' : 'Add to Google Calendar'}</button>`}
+          <button class="btn small ghost" data-done="${esc(r.id)}">${r.done ? 'Not done' : 'Done'}</button>
+          <button class="btn small ghost" data-edit="${esc(r.id)}">Edit</button>
+        </div>
+      </div>`).join('') || '<p class="empty-note">No reminders yet. Add a suggestion above or your own.</p>';
+    document.getElementById('sugs').innerHTML = sugs.map((s, i) => `
+      <div class="sug"><div class="body"><b>${esc(s.title)}</b><div class="muted" style="font-size:13px">Due ${esc(fmtDate(s.due))}. ${esc(s.notes)}</div></div>
+      <button class="btn small primary" data-sug="${i}">Add</button></div>`).join('') || '<p class="empty-note">Nothing new to suggest: all suggestions are already in your list, or there are no blood reports yet.</p>';
+  }
+
+  async function load() {
+    const [t, s] = await Promise.all([api('/tracking'), api('/reminders/suggest')]);
+    rems = t.reminders;
+    sugs = s.suggestions;
+    render();
+  }
+
+  async function save(item, id) {
+    return api(id ? `/reminders/${id}` : '/reminders', { method: id ? 'PUT' : 'POST', body: { item } });
+  }
+
+  function open(r) {
+    editing = r ? r.id : null;
+    form.reset();
+    if (r) { form.title.value = r.title; form.due.value = r.due; form.notes.value = r.notes || ''; form.done.value = r.done ? '1' : ''; }
+    document.getElementById('del').classList.toggle('hidden', !r);
+    dlg.showModal();
+    form.title.focus();
+  }
+
+  document.getElementById('add').addEventListener('click', () => open(null));
+  document.getElementById('cancel').addEventListener('click', () => dlg.close());
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const old = rems.find((r) => r.id === editing);
+    try {
+      await save({ title: form.title.value, due: form.due.value, notes: form.notes.value, done: form.done.value === '1', markers: old?.markers || [] }, editing);
+      dlg.close();
+      load();
+    } catch (err) { toast(err.message, 5000); }
+  });
+  document.getElementById('del').addEventListener('click', async () => {
+    if (!confirm('Delete this reminder? (The Google Calendar event, if any, stays; delete it there.)')) return;
+    try { await api(`/reminders/${editing}`, { method: 'DELETE' }); dlg.close(); load(); } catch (err) { toast(err.message, 5000); }
+  });
+  document.addEventListener('click', async (e) => {
+    const t = e.target.closest('[data-sug],[data-done],[data-edit],[data-cal]');
+    if (!t) return;
+    try {
+      if (t.dataset.sug) {
+        await save(sugs[Number(t.dataset.sug)]);
+        toast('Added');
+      } else if (t.dataset.done) {
+        const r = rems.find((x) => x.id === t.dataset.done);
+        await save({ ...r, done: !r.done }, r.id);
+      } else if (t.dataset.edit) {
+        open(rems.find((x) => x.id === t.dataset.edit));
+        return;
+      } else if (t.dataset.cal) {
+        t.disabled = true;
+        const res = await fetch(window.Health.url(`/reminders/${t.dataset.cal}/calendar`), { method: 'POST', credentials: 'same-origin' });
+        const d = await res.json().catch(() => ({}));
+        if (res.status === 401 && d.authUrl) {
+          if (confirm(`${d.error}\n\nOpen the Google sign-in now?`)) location.href = d.authUrl;
+          t.disabled = false;
+          return;
+        }
+        if (!res.ok) throw new Error(d.error || `Failed (${res.status})`);
+        toast('In your Google Calendar');
+      }
+      load();
+    } catch (err) { toast(err.message, 6000); t.disabled = false; }
+  });
+  load().catch((e) => { document.getElementById('list').innerHTML = `<p class="empty-note">${esc(e.message)}</p>`; });
+</script>
+</body>
+</html>

@@ -25,6 +25,8 @@
   .key .k-line { width: 18px; height: 2px; background: var(--series); vertical-align: 3px; }
   .key .k-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--series); }
   .key .k-bad { width: 9px; height: 9px; border-radius: 50%; background: var(--critical); }
+  .key .k-med { width: 18px; height: 10px; border: 1px solid var(--axis); background: repeating-linear-gradient(45deg, var(--axis) 0 1px, transparent 1px 4px); }
+  table.trend thead th .lab { display: block; font-size: 10px; color: var(--muted); text-transform: none; letter-spacing: 0; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
   .cat-head { grid-column: 1 / -1; font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); margin: 10px 0 -4px; }
@@ -91,13 +93,14 @@
     <span><i class="k-line"></i>Your value over time</span>
     <span><i class="k-dot"></i>Within range</span>
     <span><i class="k-bad"></i>Outside range (▲ high / ▼ low)</span>
-    <span>Hover or tap a chart for exact values.</span>
+    <span id="keyMed" class="hidden"><i class="k-med"></i>Taking a linked medicine / supplement</span>
+    <span>Hover or tap a chart for exact values, lab and sample time.</span>
   </div>
 
   <div id="charts" class="grid"></div>
   <div id="table" class="hidden"></div>
 
-  <p class="disclaimer">Values were read automatically from your PDF reports. If anything looks off, check it against the original report, and correct it in <span class="mono">data/overrides.json</span>, then run <span class="mono">npm run health:build</span>. Ranges are the lab's reference ranges; "optimal" targets shown in the guide may be tighter. This is not a diagnosis.</p>
+  <p class="disclaimer">Values were read automatically from your PDF reports. If anything looks off, open the report from the Reports list on the main page, press <b>Review</b> and correct it there. Different labs use different methods and ranges, and TSH and cortisol are much higher in early-morning samples, so compare like with like. Ranges are the lab's reference ranges; "optimal" targets shown in the guide may be tighter. This is not a diagnosis.</p>
 </div>
 
 <script>
@@ -127,8 +130,13 @@ function rangeText(m) {
   return '';
 }
 function series(m) {
-  return DATA.reports.filter((r) => r.values[m.key] != null).map((r) => ({ date: r.date, v: r.values[m.key], partial: r.partial }));
+  return DATA.reports.filter((r) => r.values[m.key] != null).map((r) => ({ date: r.date, v: r.values[m.key], partial: r.partial, provider: r.provider, time: r.time }));
 }
+let MEDS = [];
+const medsFor = (m) => MEDS.filter((x) => x.startedOn && (x.markers || []).includes(m.key));
+const shortLab = (p) => String(p || '').replace(/ (Diagnostics|Hospitals?|Labs?)$/i, '');
+// "07:44" -> "7:44 am"
+const fmtTime = (t) => { if (!t) return ''; const [h, mm] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(mm).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`; };
 // Distance outside the range, so "closer to normal" counts as better even while still out of range.
 function badness(m, v) {
   if (m.low != null && v < m.low) return (m.low - v) / (m.low || 1);
@@ -197,6 +205,21 @@ function drawChart(holder, m, wide) {
 
   const surface = css('--paper');
   const parts = [];
+  // medicine / supplement periods: neutral hatch behind everything, labelled at the top
+  const meds = medsFor(m);
+  if (meds.length) {
+    const pid = `hatch-${m.key}`;
+    parts.push(`<defs><pattern id="${pid}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="var(--axis)" stroke-width="1"/></pattern></defs>`);
+    const tEnd = Date.now();
+    meds.forEach((med, i) => {
+      const a = Math.max(pad.l, x(med.startedOn));
+      const stop = med.stoppedOn ? +new Date(med.stoppedOn) : tEnd;
+      const b = Math.min(W - pad.r, pad.l + ((stop - t0) / ((t1 - t0) || 1)) * (W - pad.l - pad.r));
+      if (b - a < 2) return;
+      parts.push(`<rect x="${a}" y="${pad.t}" width="${b - a}" height="${H - pad.t - pad.b}" fill="url(#${pid})" opacity="0.55"><title>${esc(med.name)}: ${esc(med.startedOn)} to ${esc(med.stoppedOn || 'now')}</title></rect>`);
+      parts.push(`<text x="${a + 3}" y="${pad.t + 10 + i * 11}" font-size="9" fill="var(--ink-soft)">${esc(med.name.slice(0, 22))}</text>`);
+    });
+  }
   // normal-range band
   const bTop = m.high != null ? y(m.high) : pad.t;
   const bBot = m.low != null ? y(m.low) : H - pad.b;
@@ -250,7 +273,7 @@ function drawChart(holder, m, wide) {
     const px = x(best.date), py = y(best.v);
     xh.setAttribute('x1', px); xh.setAttribute('x2', px); xh.setAttribute('visibility', 'visible');
     const s = statusOf(m, best.v);
-    tip.innerHTML = `<div class="muted">${esc(fmtDate(best.date))}${best.partial ? ' · interim' : ''}</div><div class="tv num">${fmt(best.v)} <span class="muted">${esc(m.unit)}</span></div><div>${statusPill(s)}</div>`;
+    tip.innerHTML = `<div class="muted">${esc(fmtDate(best.date))}${best.time ? `, ${esc(fmtTime(best.time))}` : ''}${best.partial ? ' · interim' : ''}</div><div class="tv num">${fmt(best.v)} <span class="muted">${esc(m.unit)}</span></div><div>${statusPill(s)}</div><div class="muted">${esc(best.provider || '')}</div>`;
     tip.classList.remove('hidden');
     const tw = tip.offsetWidth;
     const left = Math.min(Math.max(px, tw / 2), W - tw / 2);
@@ -307,7 +330,7 @@ function renderTable() {
   const ms = visibleMarkers();
   const el = document.getElementById('table');
   if (!ms.length) { el.innerHTML = '<div class="empty card">No tests match.</div>'; return; }
-  const head = `<tr><th>Test</th>${DATA.reports.map((r) => `<th>${esc(fmtDate(r.date, { month: 'short', year: 'numeric' }))}${r.partial ? '*' : ''}</th>`).join('')}<th>Normal range</th></tr>`;
+  const head = `<tr><th>Test</th>${DATA.reports.map((r) => `<th>${esc(fmtDate(r.date, { month: 'short', year: 'numeric' }))}${r.partial ? '*' : ''}<span class="lab">${esc(shortLab(r.provider))}${r.time ? ` · ${esc(fmtTime(r.time))}` : ''}</span></th>`).join('')}<th>Normal range</th></tr>`;
   let body = '';
   let lastCat = null;
   for (const m of ms) {
@@ -358,10 +381,11 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => stat
 
 (async () => {
   try {
-    const res = await fetch('data/health-data.json', { credentials: 'same-origin', cache: 'no-store' });
-    if (res.status === 401) { location.href = `/health.html?next=${encodeURIComponent(location.pathname)}`; return; }
-    if (!res.ok) throw new Error('No data yet — run "npm run health:build" on the server to read your PDFs.');
-    DATA = await res.json();
+    const [chart, tracking] = await Promise.all([window.Health.api('/chart-data'), window.Health.api('/tracking').catch(() => ({ medications: [] }))]);
+    DATA = chart;
+    MEDS = tracking.medications;
+    if (!DATA.reports.length) throw new Error('No blood reports yet for this person. Upload one on the main page.');
+    document.getElementById('keyMed').classList.toggle('hidden', !MEDS.some((x) => x.startedOn && x.markers?.length));
     const first = DATA.reports[0], last = DATA.reports[DATA.reports.length - 1];
     const attention = DATA.markers.filter((m) => DATA.reports.some((r) => r.values[m.key] != null) && needsAttention(m)).length;
     document.getElementById('lede').textContent =

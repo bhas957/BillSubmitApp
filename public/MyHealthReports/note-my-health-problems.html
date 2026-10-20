@@ -679,7 +679,7 @@ document.getElementById('printBtn').addEventListener('click', () => {
     document.getElementById('list').innerHTML = `<div class="card empty">${esc(e.message)}</div>`;
   }
   try {
-    const d = await (await fetch('data/health-data.json', { credentials: 'same-origin' })).json();
+    const d = await api('/chart-data');
     markers = d.markers.filter((m) => d.reports.some((rep) => rep.values[m.key] != null));
     renderList();
   } catch { /* lab data optional */ }

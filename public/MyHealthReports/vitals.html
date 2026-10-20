@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Body Measurements</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .entry { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px 12px; align-items: end; }
+  .entry .field input { min-width: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; margin: 16px 0; }
+  .mcard { padding: 14px 14px 10px; min-width: 0; }
+  .mname { font-weight: 600; font-size: 14px; }
+  .munit { font-size: 12px; color: var(--muted); }
+  .mvalue { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+  .mvalue .v { font-size: 24px; font-weight: 600; }
+  .range { font-size: 12px; color: var(--muted); }
+  .mdelta { font-size: 12px; color: var(--ink-soft); }
+  .chart { position: relative; margin-top: 6px; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .tip { position: absolute; pointer-events: none; z-index: 5; background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 7px 10px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%); }
+  .tip .tv { font-size: 14px; font-weight: 600; }
+  .import-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / Body measurements</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title">Body measurements</h1>
+  <p class="lede">Weight, waist, blood pressure, pulse, sleep, steps and home sugar readings. These are what change first when insulin resistance and cholesterol improve, long before the next blood test. One row per day; fill only what you measured.</p>
+
+  <div class="card">
+    <h2 class="section">Add today's numbers</h2>
+    <form class="entry" id="entry">
+      <label class="field"><span>Date</span><input type="date" name="date" required /></label>
+      <label class="field"><span>Weight kg</span><input type="number" name="weight" step="0.1" min="10" max="400" inputmode="decimal" /></label>
+      <label class="field"><span>Waist cm</span><input type="number" name="waist" step="0.5" min="30" max="250" inputmode="decimal" /></label>
+      <label class="field"><span>BP systolic</span><input type="number" name="bpSys" min="50" max="260" inputmode="numeric" /></label>
+      <label class="field"><span>BP diastolic</span><input type="number" name="bpDia" min="30" max="180" inputmode="numeric" /></label>
+      <label class="field"><span>Pulse bpm</span><input type="number" name="pulse" min="20" max="250" inputmode="numeric" /></label>
+      <label class="field"><span>Sleep hours</span><input type="number" name="sleepHours" step="0.25" min="0" max="24" inputmode="decimal" /></label>
+      <label class="field"><span>Steps</span><input type="number" name="steps" min="0" max="200000" inputmode="numeric" /></label>
+      <label class="field"><span>Sugar mg/dL</span><input type="number" name="glucose" min="20" max="600" inputmode="numeric" title="Home glucometer reading" /></label>
+      <label class="field" style="grid-column: span 2"><span>Note</span><input type="text" name="note" maxlength="500" placeholder="e.g. fasting, after walk" /></label>
+      <button class="btn primary" type="submit">Save</button>
+    </form>
+    <p class="hint">Measure weight in the morning after the toilet, before food; waist at the belly button, breathing out; BP seated after 5 minutes' rest.</p>
+  </div>
+
+  <div class="grid" id="charts"></div>
+
+  <div class="card">
+    <div class="head-row"><h2 class="section">Import from a CSV</h2></div>
+    <div class="import-row">
+      <input type="file" id="csvFile" accept=".csv,text/csv" />
+      <button class="btn small" id="importBtn">Import</button>
+    </div>
+    <p class="hint">Exports from a smart scale, BP monitor or fitness app work if they have a <b>Date</b> column; columns named like Weight, Waist, Systolic, Diastolic, Pulse / Heart rate, Sleep, Steps or Glucose are picked up. Days already entered are merged, not duplicated. Dates like 25/10/2026 are read as day/month.</p>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="head-row"><h2 class="section">All entries</h2></div>
+    <div class="tbl-wrap" id="table"></div>
+  </div>
+</div>
+
+<script>
+  const { api, esc, toast, fmtDate, today } = window.Health;
+  const form = document.getElementById('entry');
+  let rows = [];
+  let person = null;
+
+  const METRICS = [
+    { key: 'weight', name: 'Weight', unit: 'kg' },
+    { key: 'waist', name: 'Waist', unit: 'cm' },
+    { key: 'bp', name: 'Blood pressure', unit: 'mmHg', series: ['bpSys', 'bpDia'], low: null, high: 120, highDia: 80 },
+    { key: 'pulse', name: 'Resting pulse', unit: 'bpm', low: 60, high: 100 },
+    { key: 'sleepHours', name: 'Sleep', unit: 'hours', low: 7, high: 9 },
+    { key: 'steps', name: 'Steps', unit: 'per day', low: 7000 },
+    { key: 'glucose', name: 'Blood sugar (home)', unit: 'mg/dL', low: 70, high: 100, note: 'Normal band is for fasting readings' },
+  ];
+  // Waist target depends on sex (Asian-Indian cut-offs).
+  const waistHigh = () => (person?.sex === 'female' ? 80 : 90);
+
+  const fmt = (v) => (v == null ? '–' : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString('en-IN') : String(+(+v).toFixed(1)));
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  function niceTicks(lo, hi, n = 3) {
+    const step0 = (hi - lo || 1) / n;
+    const mag = 10 ** Math.floor(Math.log10(step0));
+    const step = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((s) => s >= step0);
+    const out = [];
+    for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) out.push(+t.toFixed(10));
+    return out;
+  }
+
+  // Line chart over time: normal band, 2px lines, ringed dots, out-of-range dots in the
+  // critical colour, direct label on the last point, crosshair + tooltip.
+  function drawChart(holder, m) {
+    const keys = m.series || [m.key];
+    const lines = keys.map((k, i) => ({
+      key: k,
+      label: m.series ? (i === 0 ? 'Systolic' : 'Diastolic') : m.name,
+      high: k === 'bpDia' ? m.highDia : m.key === 'waist' ? waistHigh() : m.high,
+      low: m.low,
+      dash: i === 1 ? '5 4' : '',
+      pts: rows.filter((r) => r[k] != null).map((r) => ({ date: r.date, v: r[k] })),
+    })).filter((l) => l.pts.length);
+    const all = lines.flatMap((l) => l.pts);
+    const W = Math.max(240, holder.clientWidth), H = 160;
+    const pad = { l: 44, r: 52, t: 12, b: 24 };
+    const dates = all.map((p) => +new Date(p.date));
+    const t0 = Math.min(...dates), t1 = Math.max(...dates);
+    const x = (d) => pad.l + ((+new Date(d) - t0) / ((t1 - t0) || 1)) * (W - pad.l - pad.r);
+    let lo = Math.min(...all.map((p) => p.v)), hi = Math.max(...all.map((p) => p.v));
+    const bandHigh = lines[0].high, bandLow = lines[0].low;
+    if (bandHigh != null) hi = Math.max(hi, bandHigh);
+    if (bandLow != null) lo = Math.min(lo, bandLow);
+    const span = (hi - lo) || Math.abs(hi) || 1;
+    lo -= span * 0.12; hi += span * 0.12;
+    if (lo < 0) lo = 0;
+    const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+    const parts = [];
+    if (bandHigh != null || bandLow != null) {
+      const top = bandHigh != null ? y(bandHigh) : pad.t, bot = bandLow != null ? y(bandLow) : H - pad.b;
+      parts.push(`<rect x="${pad.l}" y="${top}" width="${W - pad.l - pad.r}" height="${Math.max(0, bot - top)}" fill="var(--band)"/>`);
+    }
+    for (const t of niceTicks(lo, hi)) {
+      parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/>`);
+      parts.push(`<text x="${pad.l - 6}" y="${y(t) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${fmt(t)}</text>`);
+    }
+    parts.push(`<line x1="${pad.l}" x2="${W - pad.r}" y1="${H - pad.b}" y2="${H - pad.b}" stroke="var(--axis)"/>`);
+    const first = new Date(t0), last = new Date(t1);
+    parts.push(`<text x="${pad.l}" y="${H - 6}" font-size="10" fill="var(--muted)">${esc(fmtDate(first.toISOString(), { day: 'numeric', month: 'short', year: '2-digit' }))}</text>`);
+    if (t1 > t0) parts.push(`<text x="${W - pad.r}" y="${H - 6}" font-size="10" fill="var(--muted)" text-anchor="end">${esc(fmtDate(last.toISOString(), { day: 'numeric', month: 'short', year: '2-digit' }))}</text>`);
+    const surface = css('--paper');
+    for (const l of lines) {
+      if (l.pts.length > 1) parts.push(`<polyline fill="none" stroke="var(--series)" stroke-width="2" stroke-dasharray="${l.dash}" stroke-linejoin="round" stroke-linecap="round" points="${l.pts.map((p) => `${x(p.date)},${y(p.v)}`).join(' ')}"/>`);
+      for (const p of l.pts) {
+        const bad = (l.high != null && p.v > l.high) || (l.low != null && p.v < l.low);
+        parts.push(`<circle cx="${x(p.date)}" cy="${y(p.v)}" r="4" fill="${bad ? 'var(--critical)' : 'var(--series)'}" stroke="${surface}" stroke-width="2"/>`);
+      }
+      const e = l.pts[l.pts.length - 1];
+      parts.push(`<text x="${x(e.date) + 8}" y="${y(e.v) + 4}" font-size="11" font-weight="600" fill="var(--ink)">${fmt(e.v)}${m.series ? ` ${l.label === 'Systolic' ? 'sys' : 'dia'}` : ''}</text>`);
+    }
+    parts.push(`<line class="xh" x1="0" x2="0" y1="${pad.t}" y2="${H - pad.b}" stroke="var(--axis)" visibility="hidden"/>`);
+    holder.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(m.name)} over time">${parts.join('')}</svg><div class="tip hidden"></div>`;
+    const svg = holder.querySelector('svg'), tip = holder.querySelector('.tip'), xh = holder.querySelector('.xh');
+    const days = [...new Set(all.map((p) => p.date))].sort();
+    svg.addEventListener('pointermove', (ev) => {
+      const mx = ev.clientX - svg.getBoundingClientRect().left;
+      const d = days.reduce((best, cur) => (Math.abs(x(cur) - mx) < Math.abs(x(best) - mx) ? cur : best), days[0]);
+      const vals = lines.map((l) => [l, l.pts.find((p) => p.date === d)]).filter(([, p]) => p);
+      xh.setAttribute('x1', x(d)); xh.setAttribute('x2', x(d)); xh.setAttribute('visibility', 'visible');
+      tip.innerHTML = `<div class="muted">${esc(fmtDate(d))}</div>${vals.map(([l, p]) => `<div class="tv">${fmt(p.v)} <span class="muted">${m.series ? l.label.toLowerCase() : esc(m.unit)}</span></div>`).join('')}`;
+      tip.classList.remove('hidden');
+      const tw = tip.offsetWidth;
+      tip.style.left = `${Math.min(Math.max(x(d), tw / 2), W - tw / 2)}px`;
+      tip.style.top = `${Math.max(Math.min(...vals.map(([, p]) => y(p.v))) - 10, tip.offsetHeight)}px`;
+    });
+    svg.addEventListener('pointerleave', () => { tip.classList.add('hidden'); xh.setAttribute('visibility', 'hidden'); });
+  }
+
+  function latest(key) { return rows.filter((r) => r[key] != null).pop(); }
+
+  function renderCharts() {
+    const shown = METRICS.filter((m) => (m.series || [m.key]).some((k) => rows.some((r) => r[k] != null)));
+    const el = document.getElementById('charts');
+    if (!shown.length) { el.innerHTML = '<div class="card empty-note" style="grid-column:1/-1">No measurements yet. Add today\'s numbers above.</div>'; return; }
+    el.innerHTML = shown.map((m) => {
+      const k = m.series ? m.series[0] : m.key;
+      const last = latest(k);
+      const first = rows.find((r) => r[k] != null);
+      let value = fmt(last[k]);
+      if (m.series) { const d = latest('bpDia'); value = `${fmt(last.bpSys)}${d ? `/${fmt(d.bpDia)}` : ''}`; }
+      const diff = last[k] - first[k];
+      const high = m.key === 'waist' ? waistHigh() : m.high;
+      const range = m.series ? 'Normal below 120/80' : high != null && m.low != null ? `Normal ${m.low}–${high}` : high != null ? `Target below ${high}` : m.low != null ? `Target ${m.low.toLocaleString('en-IN')}+` : '';
+      return `<article class="card mcard">
+        <div class="mname">${esc(m.name)}</div><div class="munit">${esc(m.unit)}${m.series ? ' · solid systolic, dashed diastolic' : ''}</div>
+        <div class="mvalue"><span class="v num">${value}</span><span class="range">${esc(range)}</span></div>
+        <div class="mdelta">${first !== last ? `${diff > 0 ? '↑ +' : diff < 0 ? '↓ ' : '→ '}${fmt(diff)} since ${esc(fmtDate(first.date))}` : `On ${esc(fmtDate(last.date))}`}${m.note ? ` · ${esc(m.note)}` : ''}</div>
+        <div class="chart" data-chart="${m.key}"></div></article>`;
+    }).join('');
+    shown.forEach((m) => drawChart(el.querySelector(`[data-chart="${m.key}"]`), m));
+  }
+
+  function renderTable() {
+    const cols = ['weight', 'waist', 'bpSys', 'bpDia', 'pulse', 'sleepHours', 'steps', 'glucose'];
+    const head = ['Date', 'Weight', 'Waist', 'Sys', 'Dia', 'Pulse', 'Sleep', 'Steps', 'Sugar', 'Note', ''];
+    document.getElementById('table').innerHTML = rows.length ? `<table class="tbl"><thead><tr>${head.map((h, i) => `<th class="${i && i < 9 ? 'num' : ''}">${h}</th>`).join('')}</tr></thead><tbody>${
+      [...rows].reverse().map((r) => `<tr><td>${esc(fmtDate(r.date))}</td>${cols.map((c) => `<td class="num">${r[c] == null ? '<span class="muted">–</span>' : fmt(r[c])}</td>`).join('')}<td>${esc(r.note || '')}</td>
+        <td><button class="btn small ghost" data-del="${esc(r.id)}" aria-label="Delete ${esc(r.date)}">✕</button></td></tr>`).join('')
+    }</tbody></table>` : '<p class="empty-note">No entries yet.</p>';
+  }
+
+  async function load() {
+    const t = await api('/tracking');
+    rows = t.measurements;
+    person = t.profile;
+    renderCharts();
+    renderTable();
+  }
+
+  form.date.value = today();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const item = Object.fromEntries(new FormData(form));
+    try {
+      await api('/measurements', { method: 'POST', body: { item } });
+      const d = form.date.value;
+      form.reset();
+      form.date.value = d;
+      toast('Saved');
+      load();
+    } catch (err) { toast(err.message, 5000); }
+  });
+  document.getElementById('table').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-del]');
+    if (!b || !confirm('Delete this day\'s measurements?')) return;
+    try { await api(`/measurements/${b.dataset.del}`, { method: 'DELETE' }); load(); } catch (err) { toast(err.message, 5000); }
+  });
+  document.getElementById('importBtn').addEventListener('click', async () => {
+    const file = document.getElementById('csvFile').files[0];
+    if (!file) { toast('Choose a CSV file first'); return; }
+    try {
+      const r = await api('/measurements/import', { method: 'POST', body: { csv: await file.text() } });
+      toast(`${r.added} days added, ${r.merged} merged${r.skipped.length ? `, ${r.skipped.length} rows skipped` : ''}`, 6000);
+      if (r.skipped.length) console.warn('Skipped rows:', r.skipped);
+      load();
+    } catch (err) { toast(err.message, 6000); }
+  });
+  let resizeTimer;
+  addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderCharts, 150); });
+  document.addEventListener('themechange', renderCharts);
+  load().catch((e) => { document.getElementById('charts').innerHTML = `<div class="card empty-note">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>

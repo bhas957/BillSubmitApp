@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Medicines &amp; Supplements</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .med { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .med:last-child { border-bottom: 0; }
+  .med-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .med-name { font-weight: 600; font-size: 16px; }
+  .med-head .spacer { flex: 1; }
+  .med-meta { color: var(--ink-soft); font-size: 13px; margin-top: 3px; }
+  .effect { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+  .effect div { border: 1px solid var(--line); padding: 8px 10px; font-size: 13px; background: var(--surface); }
+  .effect b { font-weight: 600; }
+  .effect .when { color: var(--muted); font-size: 12px; }
+  .marker-pick { display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow: auto; padding: 2px; }
+  .marker-pick .chip { font-size: 12px; }
+  .chip[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / Medicines</div>
+    <div class="spacer"></div>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <h1 class="title">Medicines &amp; supplements</h1>
+  <p class="lede">Note what you take and when you started or stopped. Link each one to the tests it should change (e.g. Vitamin D tablets → Vitamin D) to see whether the next report moved, and the dates show as bands on the trend charts. The AI assistant sees this list too.</p>
+
+  <div class="card">
+    <div class="head-row"><h2 class="section">Taking now</h2><span class="spacer"></span><button class="btn small primary" id="add">Add medicine or supplement</button></div>
+    <div id="current"><p class="empty-note">Loading…</p></div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="head-row"><h2 class="section">Stopped</h2></div>
+    <div id="past"></div>
+  </div>
+  <p class="disclaimer">Before/after numbers compare the last result before the start date with results after it. Other changes (diet, weight, a different lab or time of day) can also move results. Don't start, stop or change a medicine without your doctor.</p>
+</div>
+
+<dialog class="sheet" id="dlg">
+  <form method="dialog" id="form">
+    <h3 id="dlgTitle">Add</h3>
+    <div class="form-grid">
+      <label class="field"><span>Name</span><input type="text" name="name" maxlength="120" required placeholder="e.g. Vitamin D3 60,000 IU" list="commonMeds" /></label>
+      <label class="field"><span>Type</span><select name="kind"><option value="medicine">Medicine</option><option value="supplement">Supplement</option></select></label>
+      <label class="field"><span>Dose</span><input type="text" name="dose" maxlength="120" placeholder="e.g. 1 capsule, 25 mcg" /></label>
+      <label class="field"><span>How often</span><input type="text" name="frequency" maxlength="120" placeholder="e.g. once a week after lunch" /></label>
+      <label class="field"><span>Started on</span><input type="date" name="startedOn" /></label>
+      <label class="field"><span>Stopped on (leave empty if still taking)</span><input type="date" name="stoppedOn" /></label>
+      <label class="field"><span>Why</span><input type="text" name="reason" maxlength="300" placeholder="e.g. low Vitamin D" /></label>
+      <label class="field"><span>Prescribed by</span><input type="text" name="prescribedBy" maxlength="120" placeholder="Doctor, or 'self'" /></label>
+      <div class="field full"><span>Tests it should change</span><div class="marker-pick" id="markerPick"></div></div>
+      <label class="field full"><span>Notes (side effects, brand…)</span><textarea name="notes" rows="2" maxlength="4000"></textarea></label>
+    </div>
+    <div class="actions">
+      <button class="btn danger left hidden" type="button" id="del">Delete</button>
+      <button class="btn" type="button" id="cancel">Cancel</button>
+      <button class="btn primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="commonMeds">
+  <option value="Vitamin D3 60,000 IU"><option value="Vitamin B12 (methylcobalamin)"><option value="Folic acid"><option value="Levothyroxine (Thyronorm / Eltroxin)">
+  <option value="Metformin"><option value="Omega-3 fish oil"><option value="Magnesium glycinate"><option value="Iron (ferrous)"><option value="Statin (atorvastatin / rosuvastatin)">
+</datalist>
+
+<script>
+  const { api, esc, toast, fmtDate, today } = window.Health;
+  const dlg = document.getElementById('dlg');
+  const form = document.getElementById('form');
+  let meds = [];
+  let chart = { markers: [], reports: [] };
+  let editing = null;
+
+  const fmt = (v) => (Math.abs(v) >= 100 ? String(Math.round(v * 10) / 10) : String(+v.toFixed(2)));
+  const markerOf = (k) => chart.markers.find((m) => m.key === k);
+  const status = (m, v) => (m.low != null && v < m.low ? 'low' : m.high != null && v > m.high ? 'high' : 'ok');
+  const badness = (m, v) => (m.low != null && v < m.low ? (m.low - v) / (m.low || 1) : m.high != null && v > m.high ? (v - m.high) / (m.high || 1) : 0);
+
+  // Last reading before the start vs the latest reading while taking it (or until it stopped).
+  function effect(med, key) {
+    const m = markerOf(key);
+    if (!m) return '';
+    const pts = chart.reports.filter((r) => r.values[key] != null).map((r) => ({ date: r.date, v: r.values[key], provider: r.provider }));
+    const before = med.startedOn ? pts.filter((p) => p.date < med.startedOn).pop() : null;
+    const during = pts.filter((p) => (!med.startedOn || p.date >= med.startedOn) && (!med.stoppedOn || p.date <= med.stoppedOn)).pop();
+    if (!before && !during) return `<div><b>${esc(m.name)}</b><div class="when">No results yet</div></div>`;
+    if (!before || !during) {
+      const p = before || during;
+      return `<div><b>${esc(m.name)}</b>: ${fmt(p.v)} ${esc(m.unit)}<div class="when">${before ? 'before' : 'since'} start · ${esc(fmtDate(p.date))} · ${before ? 'no test since starting yet' : 'no test before starting'}</div></div>`;
+    }
+    const b = badness(m, before.v), a = badness(m, during.v);
+    const verdict = a < b - 1e-9 ? '<span class="good">closer to normal</span>' : a > b + 1e-9 ? '<span class="warn">further from normal</span>' : status(m, during.v) === 'ok' ? 'still normal' : 'no change in range';
+    const labs = before.provider !== during.provider ? ` · different labs (${esc(before.provider)} → ${esc(during.provider)})` : '';
+    return `<div><b>${esc(m.name)}</b>: ${fmt(before.v)} → <b>${fmt(during.v)}</b> ${esc(m.unit)} · ${verdict}<div class="when">${esc(fmtDate(before.date))} → ${esc(fmtDate(during.date))}${labs}</div></div>`;
+  }
+
+  function row(med) {
+    const when = [med.startedOn && `since ${fmtDate(med.startedOn)}`, med.stoppedOn && `stopped ${fmtDate(med.stoppedOn)}`].filter(Boolean).join(' · ');
+    return `<div class="med">
+      <div class="med-head"><span class="med-name">${esc(med.name)}</span><span class="pill">${esc(med.kind)}</span>
+        <span class="spacer"></span><button class="btn small ghost" data-edit="${esc(med.id)}">Edit</button></div>
+      <div class="med-meta">${esc([med.dose, med.frequency, when, med.reason && `for ${med.reason}`, med.prescribedBy && `by ${med.prescribedBy}`].filter(Boolean).join(' · '))}</div>
+      ${med.notes ? `<div class="med-meta">${esc(med.notes)}</div>` : ''}
+      ${med.markers?.length ? `<div class="effect">${med.markers.map((k) => effect(med, k)).join('')}</div>` : ''}
+    </div>`;
+  }
+
+  function render() {
+    const now = today();
+    const current = meds.filter((m) => !m.stoppedOn || m.stoppedOn >= now).sort((a, b) => (b.startedOn || '').localeCompare(a.startedOn || ''));
+    const past = meds.filter((m) => m.stoppedOn && m.stoppedOn < now).sort((a, b) => b.stoppedOn.localeCompare(a.stoppedOn));
+    document.getElementById('current').innerHTML = current.map(row).join('') || '<p class="empty-note">Nothing yet. Add the medicines and supplements you take now.</p>';
+    document.getElementById('past').innerHTML = past.map(row).join('') || '<p class="empty-note">None.</p>';
+  }
+
+  function open(med) {
+    editing = med ? med.id : null;
+    form.reset();
+    if (med) for (const k of ['name', 'kind', 'dose', 'frequency', 'startedOn', 'stoppedOn', 'reason', 'prescribedBy', 'notes']) form[k].value = med[k] || '';
+    else form.startedOn.value = today();
+    const sel = new Set(med?.markers || []);
+    const withData = chart.markers.filter((m) => !m.derived && chart.reports.some((r) => r.values[m.key] != null));
+    document.getElementById('markerPick').innerHTML = withData.map((m) =>
+      `<button type="button" class="chip" data-mk="${esc(m.key)}" aria-pressed="${sel.has(m.key)}">${esc(m.name)}</button>`).join('') || '<span class="muted">No test results yet.</span>';
+    document.getElementById('dlgTitle').textContent = med ? 'Edit' : 'Add medicine or supplement';
+    document.getElementById('del').classList.toggle('hidden', !med);
+    dlg.showModal();
+    form.name.focus();
+  }
+
+  async function load() {
+    const [t, c] = await Promise.all([api('/tracking'), api('/chart-data')]);
+    meds = t.medications;
+    chart = c;
+    render();
+  }
+
+  document.getElementById('add').addEventListener('click', () => open(null));
+  document.getElementById('cancel').addEventListener('click', () => dlg.close());
+  document.getElementById('markerPick').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mk]');
+    if (b) b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true');
+  });
+  document.addEventListener('click', (e) => {
+    const ed = e.target.closest('[data-edit]');
+    if (ed) open(meds.find((m) => m.id === ed.dataset.edit));
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const item = Object.fromEntries(['name', 'kind', 'dose', 'frequency', 'startedOn', 'stoppedOn', 'reason', 'prescribedBy', 'notes'].map((k) => [k, form[k].value]));
+    item.markers = [...document.querySelectorAll('#markerPick [aria-pressed="true"]')].map((b) => b.dataset.mk);
+    try {
+      await api(editing ? `/medications/${editing}` : '/medications', { method: editing ? 'PUT' : 'POST', body: { item } });
+      dlg.close();
+      toast('Saved');
+      load();
+    } catch (err) { toast(err.message, 5000); }
+  });
+  document.getElementById('del').addEventListener('click', async () => {
+    const m = meds.find((x) => x.id === editing);
+    if (!m || !confirm(`Delete "${m.name}"? (To keep the history, set a stop date instead.)`)) return;
+    try {
+      await api(`/medications/${m.id}`, { method: 'DELETE' });
+      dlg.close();
+      load();
+    } catch (err) { toast(err.message, 5000); }
+  });
+  load().catch((e) => { document.getElementById('current').innerHTML = `<p class="empty-note">${esc(e.message)}</p>`; });
+</script>
+</body>
+</html>

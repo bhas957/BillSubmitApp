@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Doctor Visit Pack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="health.css" />
+<script src="health.js"></script>
+<style>
+  .sheet-page section { margin-bottom: 22px; }
+  .sheet-page h2 { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); border-bottom: 1px solid var(--line); padding-bottom: 6px; margin: 0 0 10px; }
+  .who { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px 16px; font-size: 14px; }
+  .who b { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .hist { font-size: 12px; color: var(--ink-soft); }
+  .hi { color: var(--critical-ink); font-weight: 600; }
+  ul.plain { margin: 0; padding-left: 18px; }
+  ul.plain li { margin: 4px 0; }
+  .caveat { font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  textarea#questions { min-height: 160px; }
+  .print-q { white-space: pre-wrap; display: none; }
+  @media print {
+    body { font-size: 11pt; }
+    .wrap { max-width: none; padding: 0; }
+    .card { border: 0; padding: 0; }
+    textarea#questions { display: none; }
+    .print-q { display: block; }
+    section { break-inside: avoid; }
+    table.tbl th, table.tbl td { padding: 4px 6px; }
+    .who input { border: 0 !important; padding: 0 !important; min-height: 0 !important; background: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="crumbs"><a href="/">All tools</a> / <a href="./">My Health Reports</a> / Doctor visit</div>
+    <div class="spacer"></div>
+    <button class="btn primary" id="print">Print / Save PDF</button>
+    <button class="btn ghost theme-toggle" data-theme-toggle></button>
+    <button class="btn ghost" data-logout>Lock</button>
+  </div>
+
+  <div class="card sheet-page" id="pack"><p class="empty-note">Loading…</p></div>
+</div>
+
+<script>
+  const { api, esc, toast, fmtDate } = window.Health;
+  let D = null;
+  const fmt = (v) => (v == null ? '–' : Math.abs(v) >= 100 ? String(Math.round(v * 10) / 10) : String(+(+v).toFixed(2)));
+  const range = (m) => (m.low != null && m.high != null ? `${m.low}–${m.high}` : m.high != null ? `< ${m.high}` : m.low != null ? `> ${m.low}` : '');
+
+  function render() {
+    const p = D.profile, pt = D.patient || {};
+    const ch = D.changes;
+    const lastM = {};
+    for (const r of D.measurements) for (const [k, v] of Object.entries(r)) if (v != null && v !== '' && !['id', 'profile', 'date', 'note', 'createdAt', 'updatedAt'].includes(k)) lastM[k] = { v, date: r.date };
+    const mLabel = { weight: 'Weight (kg)', waist: 'Waist (cm)', bpSys: 'BP systolic', bpDia: 'BP diastolic', pulse: 'Pulse', sleepHours: 'Sleep (h)', steps: 'Steps/day', glucose: 'Home sugar' };
+    document.getElementById('pack').innerHTML = `
+      <section>
+        <h1 class="title" style="margin-bottom:8px">Health summary for my doctor</h1>
+        <div class="who">
+          <div><b>Patient</b>${esc(pt.name || p.name)}</div>
+          <div><b>Age / sex</b>${esc([pt.age || (p.birthYear && new Date().getFullYear() - p.birthYear), pt.sex || p.sex].filter(Boolean).join(' / ') || '–')}</div>
+          <div><b>Prepared</b>${esc(fmtDate(new Date().toISOString()))}</div>
+          <div class="no-print-edit"><b>Doctor</b><input type="text" id="doctor" value="${esc(D.notes.doctor || '')}" placeholder="Dr …" /></div>
+          <div><b>Visit date</b><input type="date" id="nextVisit" value="${esc(D.notes.nextVisit || '')}" /></div>
+          <div><b>Latest blood test</b>${D.latest ? `${esc(fmtDate(D.latest.date))}, ${esc(D.latest.provider)}` : 'None'}</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Out of range in the latest blood test (last 5 results)</h2>
+        ${D.abnormal.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Test</th><th class="num">Latest</th><th>Normal</th><th>Earlier</th></tr></thead><tbody>${D.abnormal.map((m) => {
+          const h = m.history, last = h[h.length - 1];
+          return `<tr><td>${esc(m.name)} <span class="muted">${esc(m.unit)}</span></td><td class="num hi">${fmt(last.value)} ${m.status === 'high' ? '▲' : '▼'}</td><td>${esc(range(m))}</td>
+            <td class="hist">${h.slice(0, -1).reverse().map((x) => `${fmt(x.value)} (${esc(fmtDate(x.date, { month: 'short', year: '2-digit' }))})`).join(' · ') || '–'}</td></tr>`;
+        }).join('')}</tbody></table></div>` : '<p>Everything tracked was in range.</p>'}
+        ${ch && (ch.newlyOut.length || ch.backToNormal.length) ? `<p style="margin:10px 0 0;font-size:14px">${ch.newlyOut.length ? `<b>Newly out of range since ${esc(fmtDate(ch.comparedTo.date))}:</b> ${ch.newlyOut.map((x) => esc(x.name)).join(', ')}. ` : ''}${ch.backToNormal.length ? `<b>Back to normal:</b> ${ch.backToNormal.map((x) => esc(x.name)).join(', ')}.` : ''}</p>` : ''}
+        ${ch?.caveats?.length ? ch.caveats.map((c) => `<p class="caveat">Note: ${esc(c)}</p>`).join('') : ''}
+      </section>
+
+      ${D.scans.length ? `<section><h2>Scans &amp; heart tests</h2><ul class="plain">${D.scans.map((s) => `<li><b>${esc(fmtDate(s.date))} · ${esc(s.title)}</b> (${esc(s.provider)}): ${esc(s.impression || s.summary || '')}</li>`).join('')}</ul></section>` : ''}
+
+      <section><h2>Current problems &amp; symptoms</h2>
+        ${D.problems.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Problem</th><th class="num">Severity</th><th>Since</th><th>Details</th></tr></thead><tbody>${D.problems.map((x) => `
+          <tr><td><b>${esc(x.title)}</b><div class="muted" style="font-size:12px">${esc(x.status)}${x.frequency ? ` · ${esc(x.frequency)}` : ''}</div></td><td class="num">${x.severity}/10</td><td>${esc(x.onset ? fmtDate(x.onset) : '–')}</td>
+          <td style="font-size:13px">${esc([x.triggers && `Worse: ${x.triggers}`, x.relievers && `Helps: ${x.relievers}`, x.notes].filter(Boolean).join(' · ').slice(0, 300))}</td></tr>`).join('')}</tbody></table></div>` : '<p>None noted.</p>'}
+      </section>
+
+      <section><h2>Medicines &amp; supplements now</h2>
+        ${D.medications.length ? `<ul class="plain">${D.medications.map((m) => `<li><b>${esc(m.name)}</b>${m.dose ? ` ${esc(m.dose)}` : ''}${m.frequency ? `, ${esc(m.frequency)}` : ''}${m.startedOn ? ` (since ${esc(fmtDate(m.startedOn))})` : ''}${m.reason ? ` for ${esc(m.reason)}` : ''}</li>`).join('')}</ul>` : '<p>None noted.</p>'}
+      </section>
+
+      ${Object.keys(lastM).length ? `<section><h2>Body measurements (latest)</h2><div class="who">${Object.entries(lastM).map(([k, x]) => `<div><b>${esc(mLabel[k] || k)}</b>${fmt(Number(x.v))} <span class="muted" style="font-size:12px">${esc(fmtDate(x.date, { day: 'numeric', month: 'short' }))}</span></div>`).join('')}</div></section>` : ''}
+
+      <section><h2>My questions</h2>
+        <textarea id="questions" placeholder="One question per line">${esc(D.notes.questions || '')}</textarea>
+        <div class="print-q" id="printQ"></div>
+        <div class="actions no-print">
+          <span class="muted left" id="saveState" style="font-size:12px"></span>
+          <button class="btn small" id="aiQ" ${D.aiConfigured ? '' : 'disabled title="Set GEMINI_API_KEY to enable"'}>Suggest questions with AI</button>
+          <button class="btn small primary" id="saveQ">Save</button>
+        </div>
+      </section>
+      <p class="disclaimer">Prepared from my own reports and notes with the My Health Reports app. Values were read automatically from lab PDFs; please check against the originals.</p>`;
+    document.getElementById('printQ').textContent = D.notes.questions || '';
+  }
+
+  async function saveNotes(msg = 'Saved') {
+    const notes = { doctor: document.getElementById('doctor').value, nextVisit: document.getElementById('nextVisit').value, questions: document.getElementById('questions').value };
+    const r = await api('/visit/notes', { method: 'PUT', body: { notes } });
+    D.notes = r.notes;
+    document.getElementById('printQ').textContent = D.notes.questions;
+    document.getElementById('saveState').textContent = `${msg} ${new Date().toLocaleTimeString()}`;
+  }
+
+  document.addEventListener('click', async (e) => {
+    if (e.target.id === 'saveQ') saveNotes().catch((err) => toast(err.message, 5000));
+    if (e.target.id === 'aiQ') {
+      e.target.disabled = true;
+      e.target.textContent = 'Thinking…';
+      try {
+        const { questions } = await api('/visit/questions', { method: 'POST', body: { doctor: document.getElementById('doctor').value } });
+        const ta = document.getElementById('questions');
+        ta.value = `${ta.value.trim() ? `${ta.value.trim()}\n\n` : ''}${questions.trim()}`;
+        await saveNotes('Added AI questions, saved');
+      } catch (err) { toast(err.message, 6000); }
+      e.target.disabled = false;
+      e.target.textContent = 'Suggest questions with AI';
+    }
+  });
+  document.addEventListener('change', (e) => {
+    if (['doctor', 'nextVisit'].includes(e.target.id)) saveNotes().catch((err) => toast(err.message, 5000));
+  });
+  document.getElementById('print').addEventListener('click', async () => {
+    try { await saveNotes(); } catch { /* print anyway */ }
+    print();
+  });
+
+  api('/visit').then((d) => { D = d; render(); })
+    .catch((e) => { document.getElementById('pack').innerHTML = `<p class="empty-note">${esc(e.message)}</p>`; });
+</script>
+</body>
+</html>

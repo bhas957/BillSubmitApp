@@ -12,30 +12,41 @@
 <script src="health.js"></script>
 <style>
   .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 26px; }
-  @media (max-width: 820px) { .tools { grid-template-columns: 1fr; } }
+  @media (max-width: 980px) { .tools { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 620px) { .tools { grid-template-columns: 1fr; } }
   a.tool { display: block; text-decoration: none; color: var(--ink); position: relative; transition: transform .08s ease; }
   a.tool:hover { transform: translateY(-2px); }
   a.tool:hover .tool-title { color: var(--accent-ink); }
-  .tool svg { width: 32px; height: 32px; color: var(--accent-ink); margin-bottom: 10px; }
-  .tool-title { font-family: var(--mono); font-weight: 700; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
+  .tool svg { width: 30px; height: 30px; color: var(--accent-ink); margin-bottom: 8px; }
+  .tool-title { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
   .tool-desc { font-size: 13px; color: var(--ink-soft); margin-top: 6px; }
-  .tool-meta { margin-top: 12px; font-size: 13px; }
+  .tool-meta { margin-top: 10px; font-size: 13px; }
   .arrow { position: absolute; top: 18px; right: 18px; font-family: var(--mono); color: var(--ink-soft); }
 
-  .snapshot { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 26px; }
+  .snapshot { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
   @media (max-width: 820px) { .snapshot { grid-template-columns: repeat(2, 1fr); } }
   .stat .label { font-size: 12px; color: var(--ink-soft); }
   .stat .value { font-size: 28px; font-weight: 600; margin-top: 2px; }
   .stat .sub { font-size: 12px; color: var(--muted); }
 
-  h2.section { font-family: var(--mono); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 12px; color: var(--ink-soft); }
+  .changes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .changes h3 { font-size: 13px; margin: 0 0 6px; }
+  .changes ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  .changes li { margin: 3px 0; }
+  .caveat { font-size: 12px; color: var(--ink-soft); margin: 10px 0 0; }
+
   .files { list-style: none; margin: 0; padding: 0; }
   .files li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; flex-wrap: wrap; }
   .files li:last-child { border-bottom: 0; }
   .files .tag { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border: 1px solid var(--line); padding: 1px 6px; color: var(--ink-soft); }
   .files a { text-decoration: none; word-break: break-word; }
   .files a:hover { text-decoration: underline; }
-  .files .size { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .files .right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .files .size { font-size: 12px; color: var(--muted); }
+  .files .date { font-family: var(--mono); font-size: 12px; min-width: 88px; }
+  .files .sub { flex-basis: 100%; padding-left: 98px; font-size: 12px; color: var(--ink-soft); }
+  @media (max-width: 600px) { .files .sub { padding-left: 0; } }
+  .status-line { font-size: 13px; margin: 0 0 10px; }
 </style>
 </head>
 <body>
@@ -47,37 +58,89 @@
     <button class="btn ghost" data-logout>Lock</button>
   </div>
 
-  <h1 class="title">My Health Reports</h1>
-  <p class="lede" id="lede">Your lab results, scans and health notes in one private place.</p>
+  <h1 class="title" id="heading">My Health Reports</h1>
+  <p class="lede" id="lede">Lab results, scans, symptoms, medicines and measurements in one private place.</p>
 
   <div class="snapshot" id="snapshot"></div>
+  <div class="card hidden" id="changes" style="margin-bottom:26px"></div>
 
   <div class="tools">
     <a class="card tool" href="compare.html">
       <span class="arrow">&rarr;</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3.5 20.5h17"/><path d="M5 16l4.5-5 3.5 3 6-7"/><circle cx="19" cy="7" r="1.4"/></svg>
       <div class="tool-title">Compare over time</div>
-      <div class="tool-desc">Every blood marker from all your reports, charted against its normal range, with what improved and what got worse.</div>
+      <div class="tool-desc">Every blood marker charted against its normal range, with lab and sample time, and your medicine periods.</div>
       <div class="tool-meta soft" id="metaCompare"></div>
     </a>
-    <a class="card tool" href="guide.html">
+    <a class="card tool" href="ask.html">
       <span class="arrow">&rarr;</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 3.5h10l4 4v13H5z"/><path d="M15 3.5v4h4"/><path d="M8 11.5h8M8 14.5h8M8 17.5h5"/></svg>
-      <div class="tool-title">My health guide</div>
-      <div class="tool-desc">What your results mean in plain words, the action plan, diet and exercise, supplements to ask about, and the retest schedule.</div>
-      <div class="tool-meta soft">Printable. Take it to your doctor.</div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 5.5h16v10H10l-4 3.5v-3.5H4z"/><path d="M8.5 9.5h7M8.5 12h4.5"/></svg>
+      <div class="tool-title">Ask about my reports</div>
+      <div class="tool-desc">Ask in plain words. The AI answers from all reports, symptoms, medicines and measurements.</div>
+      <div class="tool-meta soft">Google Gemini. Not a diagnosis.</div>
+    </a>
+    <a class="card tool" href="visit.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M6 3.5h12v17H6z"/><path d="M9 3.5v2h6v-2"/><path d="M9 10h6M9 13.5h6M9 17h3"/></svg>
+      <div class="tool-title">Doctor visit pack</div>
+      <div class="tool-desc">One printable page: out-of-range results with history, scans, symptoms, medicines and your questions.</div>
+      <div class="tool-meta soft">Print or save as PDF.</div>
     </a>
     <a class="card tool" href="note-my-health-problems.html">
       <span class="arrow">&rarr;</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 4.5h14v16H5z"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/><path d="M9 2.5v4M15 2.5v4"/></svg>
-      <div class="tool-title">Note my health problems</div>
-      <div class="tool-desc">Log symptoms by category, severity and date, track how they change, and keep it synced to Google Drive.</div>
+      <div class="tool-title">Health problems</div>
+      <div class="tool-desc">Log symptoms by category, severity and date, and track how they change.</div>
       <div class="tool-meta soft" id="metaProblems"></div>
+    </a>
+    <a class="card tool" href="medicines.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="9" width="17" height="6.5" rx="3.25" transform="rotate(-35 12 12.25)"/><path d="M9.6 8.4l3.8 5.4"/></svg>
+      <div class="tool-title">Medicines &amp; supplements</div>
+      <div class="tool-desc">What you take and since when, and whether the tests it should change actually moved.</div>
+      <div class="tool-meta soft" id="metaMeds"></div>
+    </a>
+    <a class="card tool" href="vitals.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg>
+      <div class="tool-title">Body measurements</div>
+      <div class="tool-desc">Weight, waist, blood pressure, pulse, sleep, steps and home sugar, charted. CSV import.</div>
+      <div class="tool-meta soft" id="metaVitals"></div>
+    </a>
+    <a class="card tool" href="plan.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><path d="M8.5 14.5l2.2 2.2 4.8-4.7"/></svg>
+      <div class="tool-title">Retest plan</div>
+      <div class="tool-desc">Which tests to repeat and when, suggested from your results, with Google Calendar reminders.</div>
+      <div class="tool-meta soft" id="metaPlan"></div>
+    </a>
+    <a class="card tool" href="guide.html" id="guideCard">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M5 3.5h10l4 4v13H5z"/><path d="M15 3.5v4h4"/><path d="M8 11.5h8M8 14.5h8M8 17.5h5"/></svg>
+      <div class="tool-title">My health guide</div>
+      <div class="tool-desc">What your results mean in plain words, the action plan, diet and exercise, and supplements to ask about.</div>
+      <div class="tool-meta soft">Printable.</div>
+    </a>
+    <a class="card tool" href="people.html">
+      <span class="arrow">&rarr;</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.3"/><path d="M15.5 14.3c2.4-.4 4.4 1.1 5 4.2"/></svg>
+      <div class="tool-title">Family profiles</div>
+      <div class="tool-desc">Keep each family member's reports and notes separately. Switch person from the top bar.</div>
+      <div class="tool-meta soft" id="metaPeople"></div>
     </a>
   </div>
 
   <div class="card">
-    <h2 class="section">Original reports</h2>
+    <div class="head-row">
+      <h2 class="section">Reports</h2>
+      <span class="spacer"></span>
+      <a class="btn small ghost" id="fhir" href="/api/health/export/fhir" title="Standard HL7 FHIR R4 file with LOINC codes, for other health apps and hospitals">Export (FHIR)</a>
+      <button class="btn small" id="gmailBtn" title="Find lab and hospital emails with PDF reports and add new ones">Import from Gmail</button>
+      <label class="btn small primary" for="upload">Upload a report</label>
+      <input type="file" id="upload" accept="application/pdf,image/png,image/jpeg" class="hidden" />
+    </div>
+    <p class="status-line hidden" id="status" role="status"></p>
+    <p class="status-line muted" id="gmailInfo"></p>
     <ul class="files" id="files"><li class="muted">Loading…</li></ul>
   </div>
 
@@ -85,51 +148,71 @@
 </div>
 
 <script>
-  const { api, esc, fmtDate } = window.Health;
+  const { api, url, esc, fmtDate, profile } = window.Health;
+  const fmt = (v) => (v == null ? '–' : Math.abs(v) >= 100 ? String(Math.round(v * 10) / 10) : String(+(+v).toFixed(2)));
+  const status = (html) => { const el = document.getElementById('status'); el.innerHTML = html; el.classList.remove('hidden'); };
 
-  function statusOf(m, v) {
-    if (v == null) return null;
-    if (m.low != null && v < m.low) return 'low';
-    if (m.high != null && v > m.high) return 'high';
-    return 'ok';
+  document.getElementById('fhir').href = url('/api/health/export/fhir');
+  if (profile() !== 'me') document.getElementById('guideCard').classList.add('hidden');
+  document.addEventListener('profile', (e) => {
+    const p = e.detail.profile;
+    document.getElementById('metaPeople').textContent = `${e.detail.profiles.length} ${e.detail.profiles.length === 1 ? 'person' : 'people'}`;
+    if (p && p.id !== 'me') {
+      document.getElementById('heading').textContent = `${p.name}'s health reports`;
+    }
+  });
+
+  function changesHtml(ch, title) {
+    const li = (x, extra = '') => `<li><b>${esc(x.name)}</b> ${x.before != null ? `${fmt(x.before)} → ` : ''}<b>${fmt(x.value)}</b> ${esc(x.unit)}${extra}</li>`;
+    const col = (h, arr, fn = li) => `<div><h3>${h} (${arr.length})</h3>${arr.length ? `<ul>${arr.slice(0, 8).map((x) => fn(x)).join('')}</ul>` : '<p class="muted" style="font-size:13px;margin:0">None</p>'}</div>`;
+    return `<div class="head-row"><h2 class="section">${title}</h2><span class="spacer"></span><a class="btn small ghost" href="record.html?id=${encodeURIComponent(ch.id)}">Review report</a></div>
+      ${ch.comparedTo ? `<div class="changes">
+        ${col('<span class="warn">Newly out of range</span>', ch.newlyOut)}
+        ${col('<span class="good">Back to normal</span>', ch.backToNormal)}
+        ${col('Still out of range', ch.stillOut)}
+        ${col('Biggest moves (≥20%)', ch.bigMoves, (x) => li(x, ` (${x.pct > 0 ? '+' : ''}${x.pct}%)`))}
+      </div>${ch.caveats.map((c) => `<p class="caveat">⚠ ${esc(c)}</p>`).join('')}`
+    : `<p class="muted">First blood test on record. ${ch.firstTime.length ? `Out of range: ${ch.firstTime.map((x) => esc(x.name)).join(', ')}.` : ''}</p>`}`;
   }
 
   async function loadSnapshot() {
     try {
-      const res = await fetch('data/health-data.json', { credentials: 'same-origin' });
-      if (!res.ok) throw new Error();
-      const d = await res.json();
+      const [d, { changes }] = await Promise.all([api('/chart-data'), api('/changes/latest')]);
+      if (!d.reports.length) throw new Error('none');
       const latest = d.reports[d.reports.length - 1];
-      const prev = d.reports[d.reports.length - 2];
-      let out = 0, better = 0, worse = 0;
-      for (const m of d.markers) {
-        const v = latest.values[m.key];
-        if (statusOf(m, v) && statusOf(m, v) !== 'ok') out++;
-        const pv = prev && prev.values[m.key];
-        if (v != null && pv != null) {
-          const before = statusOf(m, pv) !== 'ok', now = statusOf(m, v) !== 'ok';
-          if (before && !now) better++;
-          if (!before && now) worse++;
-        }
-      }
+      const st = (m, v) => (v == null ? null : m.low != null && v < m.low ? 'low' : m.high != null && v > m.high ? 'high' : 'ok');
+      const out = d.markers.filter((m) => { const s = st(m, latest.values[m.key]); return s && s !== 'ok'; }).length;
+      const since = changes?.comparedTo ? `since ${esc(fmtDate(changes.comparedTo.date, { month: 'short', year: 'numeric' }))}` : 'first report';
       document.getElementById('snapshot').innerHTML = `
-        <div class="card stat"><div class="label">Latest blood test</div><div class="value">${esc(fmtDate(latest.date, { month: 'short', year: 'numeric' }))}</div><div class="sub">${Object.keys(latest.values).length} markers${latest.partial ? ' · interim report' : ''}</div></div>
+        <div class="card stat"><div class="label">Latest blood test</div><div class="value">${esc(fmtDate(latest.date, { month: 'short', year: 'numeric' }))}</div><div class="sub">${esc(latest.provider)} · ${Object.keys(latest.values).length} markers${latest.partial ? ' · interim' : ''}</div></div>
         <div class="card stat"><div class="label">Outside normal range</div><div class="value">${out}</div><div class="sub">in the latest report</div></div>
-        <div class="card stat"><div class="label">Back to normal</div><div class="value">${better}</div><div class="sub">since ${esc(fmtDate(prev.date, { month: 'short', year: 'numeric' }))}</div></div>
-        <div class="card stat"><div class="label">Newly out of range</div><div class="value">${worse}</div><div class="sub">since ${esc(fmtDate(prev.date, { month: 'short', year: 'numeric' }))}</div></div>`;
+        <div class="card stat"><div class="label">Back to normal</div><div class="value">${changes?.backToNormal.length ?? 0}</div><div class="sub">${since}</div></div>
+        <div class="card stat"><div class="label">Newly out of range</div><div class="value">${changes?.newlyOut.length ?? 0}</div><div class="sub">${since}</div></div>`;
       document.getElementById('metaCompare').textContent = `${d.reports.length} blood reports · ${fmtDate(d.reports[0].date, { month: 'short', year: 'numeric' })} – ${fmtDate(latest.date, { month: 'short', year: 'numeric' })}`;
+      if (changes) {
+        const el = document.getElementById('changes');
+        el.innerHTML = changesHtml(changes, `What changed in the ${fmtDate(changes.date)} test`);
+        el.classList.remove('hidden');
+      }
     } catch {
       document.getElementById('snapshot').classList.add('hidden');
-      document.getElementById('metaCompare').textContent = 'Run "npm run health:build" to read your PDFs.';
+      document.getElementById('metaCompare').textContent = 'No blood reports yet. Upload one below.';
     }
   }
 
-  async function loadProblems() {
+  async function loadCounts() {
     try {
-      const { problems, drive } = await api('/problems');
+      const [{ problems, drive }, t] = await Promise.all([api('/problems'), api('/tracking')]);
       const open = problems.filter((p) => p.status !== 'resolved').length;
-      document.getElementById('metaProblems').textContent =
-        `${open} open · ${problems.length - open} resolved · ${drive.connected ? (drive.ok ? 'synced to Drive' : 'Drive sync pending') : 'Drive not connected'}`;
+      document.getElementById('metaProblems').textContent = `${open} open · ${problems.length - open} resolved · ${drive.connected ? (drive.ok ? 'synced to Drive' : 'Drive sync pending') : 'Drive not connected'}`;
+      const today = window.Health.today();
+      const meds = t.medications.filter((m) => !m.stoppedOn || m.stoppedOn >= today);
+      document.getElementById('metaMeds').textContent = meds.length ? `${meds.length} taking now` : 'Nothing noted yet';
+      const lastM = t.measurements[t.measurements.length - 1];
+      document.getElementById('metaVitals').textContent = lastM ? `Last entry ${fmtDate(lastM.date)}${lastM.weight ? ` · ${lastM.weight} kg` : ''}` : 'No entries yet';
+      const due = t.reminders.filter((r) => !r.done);
+      const overdue = due.filter((r) => r.due < today).length;
+      document.getElementById('metaPlan').innerHTML = due.length ? `${due.length} upcoming${overdue ? ` · <span class="warn">${overdue} overdue</span>` : ` · next ${esc(fmtDate(due[0].due))}`}` : 'No reminders yet';
     } catch (e) {
       document.getElementById('metaProblems').textContent = e.message;
     }
@@ -140,24 +223,101 @@
     try {
       const { files, drive, error } = await api('/reports');
       if (!files.length) {
-        el.innerHTML = `<li class="muted">${esc(error || (drive
-          ? 'No files yet. Upload PDFs to the pdf folder inside your MyHealthReports Google Drive folder.'
-          : 'No files yet. Set HEALTH_REPORTS_FOLDER_ID and connect Google Drive, or put PDFs in public/MyHealthReports/pdf.'))}</li>`;
+        el.innerHTML = `<li class="muted">${esc(error || 'No reports yet. Upload a PDF, or import them from Gmail.')}</li>`;
         return;
       }
-      files.sort((a, b) => a.folder.localeCompare(b.folder) || b.name.localeCompare(a.name));
-      el.innerHTML = files.map((f) => `
-        <li><span class="tag">${esc(f.folder || 'notes')}</span>
-        <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>
-        <span class="size num">${(f.size / 1024 / 1024).toFixed(f.size > 1048576 ? 1 : 2)} MB</span></li>`).join('');
+      const TYPE = { lab: 'blood', imaging: 'scan', cardiac: 'heart', other: 'other' };
+      const dateOf = (f) => f.record?.date || (f.name.match(/^\d{4}-\d{2}-\d{2}/) || [''])[0];
+      files.sort((a, b) => dateOf(b).localeCompare(dateOf(a)) || a.name.localeCompare(b.name));
+      el.innerHTML = files.map((f) => {
+        const r = f.record;
+        const label = r ? `${r.provider} · ${r.title}${r.status === 'interim' ? ' (interim)' : ''}` : f.name;
+        const badge = !r ? '' : r.reviewed ? '<span class="good" style="font-size:12px">✓ reviewed</span>'
+          : r.unverified ? `<span class="warn" style="font-size:12px">${r.unverified} to check</span>` : '';
+        return `<li><span class="date">${esc(dateOf(f) ? fmtDate(dateOf(f)) : '')}</span>
+          <span class="tag">${esc(r ? TYPE[r.type] || r.type : f.folder || 'notes')}</span>
+          <a href="${esc(f.url)}" target="_blank" rel="noopener" title="${esc(f.path)}">${esc(label)}</a>
+          <span class="right">${badge}${r ? `<a class="btn small ghost" href="record.html?id=${encodeURIComponent(r.id)}">Review</a>` : ''}<span class="size num">${(f.size / 1048576).toFixed(f.size > 1048576 ? 1 : 2)} MB</span></span>
+          ${r?.summary || r?.warnings ? `<span class="sub">${esc(r.summary || '')}${r.warnings ? ` <span class="warn">· ${r.warnings} note(s) from parsing</span>` : ''}</span>` : ''}</li>`;
+      }).join('') + (error ? `<li class="muted">${esc(error)}</li>` : '');
+      if (!drive) el.insertAdjacentHTML('beforeend', '<li class="muted">Google Drive is not connected, so only files on this server are listed.</li>');
     } catch (e) {
       el.innerHTML = `<li class="muted">${esc(e.message)}</li>`;
     }
   }
 
+  function resultHtml(r, d) {
+    const counts = r.type === 'lab' ? `${r.results.length} results, ${Object.keys(r.values).length} tracked markers` : `${(r.findings || []).length} findings`;
+    return `Saved as <b>${esc(r.file)}</b> (${esc(fmtDate(r.date))}, ${esc(r.provider)}, ${counts})${d.savedTo?.includes('drive') ? ', synced to Google Drive' : ', <span class="warn">not in Google Drive (connect Drive)</span>'}. <a href="record.html?id=${encodeURIComponent(r.id)}">Review it</a>.`
+      + (r.warnings?.length ? `<br><span class="warn">${r.warnings.map(esc).join('<br>')}</span>` : '');
+  }
+
+  document.getElementById('upload').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    status(`Reading <b>${esc(file.name)}</b>… this can take up to a minute for long reports.`);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(url('/api/health/upload'), { method: 'POST', body: form, credentials: 'same-origin' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || `Upload failed (${res.status})`);
+      status(d.duplicate ? `Already have this report: <b>${esc(d.record.file)}</b>.` : resultHtml(d.record, d));
+      if (d.changes) {
+        const el = document.getElementById('changes');
+        el.innerHTML = changesHtml(d.changes, `What changed in the report you just added (${fmtDate(d.changes.date)})`);
+        el.classList.remove('hidden');
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      loadSnapshot();
+      loadFiles();
+    } catch (err) {
+      status(`<span class="warn">${esc(err.message)}</span>`);
+    }
+  });
+
+  async function loadGmailInfo() {
+    try {
+      const g = await api('/gmail');
+      const r = g.lastResult;
+      document.getElementById('gmailInfo').textContent = g.lastRun
+        ? `Gmail last checked ${new Date(g.lastRun).toLocaleString('en-IN')}: ${r.scanned} emails, ${r.imported.length} new report(s)${r.needPassword?.length ? `, ${r.needPassword.length} need a PDF password` : ''}.${g.autoHours ? ` Checks automatically every ${g.autoHours} h.` : ''}`
+        : `Gmail not checked yet.${g.autoHours ? ` It is checked automatically every ${g.autoHours} h while the server runs.` : ''}`;
+    } catch { /* optional */ }
+  }
+
+  document.getElementById('gmailBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    status('Searching Gmail for lab and hospital reports… new ones are read one by one, this can take a few minutes.');
+    try {
+      const res = await fetch(url('/api/health/gmail/import'), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const d = await res.json().catch(() => ({}));
+      if (res.status === 401 && d.authUrl) {
+        status(`<span class="warn">${esc(d.error)}</span> <a href="${esc(d.authUrl)}">Reconnect Google</a>`);
+        return;
+      }
+      if (!res.ok) throw new Error(d.error || `Failed (${res.status})`);
+      const parts = [`Checked ${d.scanned} email(s): <b>${d.imported.length} new report(s)</b>`, `${d.duplicates} already had`, `${d.notMedical} non-report PDFs skipped`];
+      status(parts.join(' · ')
+        + (d.imported.length ? `<br>${d.imported.map((x) => `${esc(fmtDate(x.date))} · ${esc(x.provider)} → ${esc(x.file)}`).join('<br>')}` : '')
+        + (d.needPassword.length ? `<br><span class="warn">Password-protected (add the password to HEALTH_PDF_PASSWORDS): ${d.needPassword.map(esc).join('; ')}</span>` : '')
+        + (d.errors.length ? `<br><span class="warn">${d.errors.map(esc).join('<br>')}</span>` : ''));
+      loadSnapshot();
+      loadFiles();
+      loadGmailInfo();
+    } catch (err) {
+      status(`<span class="warn">${esc(err.message)}</span>`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   loadSnapshot();
-  loadProblems();
+  loadCounts();
   loadFiles();
+  loadGmailInfo();
 </script>
 </body>
 </html>
