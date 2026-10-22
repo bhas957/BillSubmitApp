@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="health.css" />
 <script src="health.js"></script>
+<script src="chat.js" defer></script>
 <style>
   .tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 26px; }
   @media (max-width: 980px) { .tools { grid-template-columns: repeat(2, 1fr); } }
@@ -72,12 +73,12 @@
       <div class="tool-desc">Every blood marker charted against its normal range, with lab and sample time, and your medicine periods.</div>
       <div class="tool-meta soft" id="metaCompare"></div>
     </a>
-    <a class="card tool" href="ask.html">
+    <a class="card tool" href="#ask" data-open-chat>
       <span class="arrow">&rarr;</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 5.5h16v10H10l-4 3.5v-3.5H4z"/><path d="M8.5 9.5h7M8.5 12h4.5"/></svg>
       <div class="tool-title">Ask about my reports</div>
-      <div class="tool-desc">Ask in plain words. The AI answers from all reports, symptoms, medicines and measurements.</div>
-      <div class="tool-meta soft">Google Gemini. Not a diagnosis.</div>
+      <div class="tool-desc">Ask in plain words, and attach PDFs or CSVs. The AI answers from all reports, symptoms, medicines and measurements, and checks Google for the rest.</div>
+      <div class="tool-meta soft">Or tap the robot at the bottom right. Google Gemini. Not a diagnosis.</div>
     </a>
     <a class="card tool" href="visit.html">
       <span class="arrow">&rarr;</span>
